@@ -28,7 +28,7 @@ Base URL (로컬): `http://localhost:8080`
 10. 완료 메시지 표시. 이후 CA가 실제 확인 결과를 알게 되면 `PATCH /api/consultations/{id}/execution-status` 로 후속 상태 갱신
 11. **고객 모바일**: `GET /api/consultations/customers/{customerId}` 로 결과 및 현재 처리 상태 확인
 
-> **무상태 설계**: 서버는 상담 진행 중 상태를 세션으로 들고 있지 않는다. 5~9 단계에서 서버가 응답한 값(특히 `structuredIntent`, `decide` 응답 전체)은 프론트가 들고 있다가 다음 요청에 그대로 담아 보내야 한다.
+> **무상태 설계**: 서버는 상담 진행 중 상태를 세션으로 들고 있지 않는다. 5-9 단계에서 서버가 응답한 값(특히 `structuredIntent`, `decide` 응답 전체)은 프론트가 들고 있다가 다음 요청에 그대로 담아 보내야 한다.
 
 ---
 
@@ -144,7 +144,7 @@ CA가 고객에게 데이터 이용 목적·범위를 안내한 뒤 동의/비�
   }
 ]
 ```
-- `actionButtonLabel` 이 `"Last Intent 시작"` 인 항목이 여러 개면, 프론트는 전부 목록으로 노출하고 **하나씩 순서대로** Last Intent 플로우(아래 4~8)를 진행한다. 한 SKU가 완료되면 목록에서 다음 SKU로 넘어가거나 CA가 수동 선택.
+- `actionButtonLabel` 이 `"Last Intent 시작"` 인 항목이 여러 개면, 프론트는 전부 목록으로 노출하고 **하나씩 순서대로** Last Intent 플로우(아래 4-8)를 진행한다. 한 SKU가 완료되면 목록에서 다음 SKU로 넘어가거나 CA가 수동 선택.
 
 ---
 
@@ -255,7 +255,7 @@ CA가 고객에게 데이터 이용 목적·범위를 안내한 뒤 동의/비�
 
 ## 7. 의도 확인·수정 (F4)
 
-별도 API 없음. 프론트가 5~6단계에서 받은 `structuredIntent` 를 화면에 그대로 보여주고, CA/고객이 확인 후 값을 고치면(예: `essentialConditions`에서 항목 추가/삭제) 그 수정된 JSON을 그대로 다음 단계(`/decide`) 요청에 넣어 보낸다.
+별도 API 없음. 프론트가 5-6단계에서 받은 `structuredIntent` 를 화면에 그대로 보여주고, CA/고객이 확인 후 값을 고치면(예: `essentialConditions`에서 항목 추가/삭제) 그 수정된 JSON을 그대로 다음 단계(`/decide`) 요청에 넣어 보낸다.
 
 ---
 
