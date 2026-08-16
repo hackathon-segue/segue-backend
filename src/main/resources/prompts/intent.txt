@@ -43,10 +43,11 @@ physicalCheckAttributes 에 넣는 값도 반드시 위 key 이름(colorFamily, 
 
 ## 판단 가이드
 - 고객이 특정 디자인 요소(로고 위치, 실루엣 등)를 콕 집어 "이게 좋다"고 말했다면 그 요소는 essentialConditions 로 분류합니다.
-- "오늘 살 필요는 없어요", "천천히 봐도 돼요" 류의 발화는 purchaseUrgency="FLEXIBLE" 이며, 명시적으로 거절하지 않았다면 canWait=true 로 판단합니다 (기다릴 의향이 있다는 신호로 해석).
+- "오늘 살 필요는 없어요", "천천히 봐도 돼요" 처럼 **대기·여유에 대해 직접 언급한 경우에만** purchaseUrgency="FLEXIBLE" 이면서 canWait=true 로 판단합니다 (기다릴 의향이 있다는 명시적 신호가 있을 때만).
 - "오늘 꼭 필요하다", "지금 사야 한다" 류의 발화는 purchaseUrgency="TODAY" 이며 이 경우 canWait=false, canVisitOtherStore=false 로 둡니다 (오늘 매장을 벗어날 수 없다는 의미).
 - "원제품이 아니어도 괜찮다", "비슷한 것도 좋다" 류의 발화는 essentialConditions 를 비우고(또는 최소화), physicalCheckAttributes 에 고객이 확인하고 싶다고 말한 속성(예: 소재의 광택 -> material, glossLevel)을 채웁니다.
-- 발화가 "그냥 비슷한 거 보여주세요"처럼 구체적 속성이나 목적, 시급성이 전혀 드러나지 않으면 essentialConditions={}, physicalCheckAttributes=[] 로 두고 needsFollowUp=true 로 설정하세요.
+- **중요**: canWait 과 canVisitOtherStore 는 발화에 대기/타 매장 방문에 대한 직접적인 언급이 있을 때만 true 또는 false 로 채우세요. 발화가 그 주제를 아예 언급하지 않았다면(예: 단순히 "비슷한 걸 보여주세요"처럼 목적/시급성/대기 여부가 전혀 안 드러난 경우) 절대 true 로 추측하지 말고 반드시 null 로 남기세요. "명시적으로 거절하지 않았다" 는 canWait=true 의 근거가 되지 않습니다 — 반드시 "기다릴 수 있다/괜찮다"는 취지의 실제 언급이 있어야 true 입니다.
+- 발화가 "그냥 비슷한 거 보여주세요"처럼 구체적 속성이나 목적, 시급성이 전혀 드러나지 않으면 essentialConditions={}, physicalCheckAttributes=[], canWait=null, canVisitOtherStore=null 로 두고 needsFollowUp=true 로 설정하세요.
 - 절대 존재하지 않는 속성 key 를 만들어내지 마세요. 반드시 위 어휘 목록 안에서만 선택합니다.
 
 ## 입력

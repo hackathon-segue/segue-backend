@@ -11,6 +11,9 @@ import org.springframework.stereotype.Service;
 import tools.jackson.databind.ObjectMapper;
 import tools.jackson.databind.node.ObjectNode;
 
+import java.util.List;
+import java.util.regex.Pattern;
+
 /**
  * 백엔드가 호출하는 AI 서비스 모듈 (segue-ai 파트).
  * intent.txt / followup.txt / card.txt 3개 프롬프트를 감싸는 유일한 진입점이며,
@@ -19,6 +22,14 @@ import tools.jackson.databind.node.ObjectNode;
 @Service
 @RequiredArgsConstructor
 public class AiService {
+
+    /**
+     * F6 카드 생성문에 절대 들어가면 안 되는 표현 (CLAUDE.md 금지어).
+     * card.txt 프롬프트로 1차 방지하지만, 실제 호출에서 "대체 제품" 처럼 변형된 형태로
+     * 새어나오는 것을 확인해 백엔드에서 2차로 검증한다 (부분 문자열 포함 여부 기준).
+     */
+    private static final List<String> BANNED_SUBSTRINGS = List.of("품절", "대체", "BEST MATCH", "적합도");
+    private static final Pattern PERCENT_PATTERN = Pattern.compile("\\d+\\s*%");
 
     private final OpenAiClient openAiClient;
     private final PromptLoader promptLoader;
@@ -93,7 +104,32 @@ public class AiService {
         }
         payload.put("pathDescription", pathDescription);
 
-        return callAndParse(systemPrompt, payload, LastIntentCardDto.class);
+        LastIntentCardDto card = callAndParse(systemPrompt, payload, LastIntentCardDto.class);
+        if (containsBannedLanguage(card)) {
+            // 1회 재시도 (AI가 매번 같은 실수를 반복하지 않는 경우가 많음)
+            card = callAndParse(systemPrompt, payload, LastIntentCardDto.class);
+            if (containsBannedLanguage(card)) {
+                throw new IllegalStateException(
+                        "AI가 생성한 카드 문구에 금지어가 포함되어 있어 안전하게 실패 처리합니다.");
+            }
+        }
+        return card;
+    }
+
+    private boolean containsBannedLanguage(LastIntentCardDto card) {
+        String combined = String.join(" ",
+                nullToEmpty(card.getCoreConditions()), nullToEmpty(card.getNextAction()),
+                nullToEmpty(card.getReason()), nullToEmpty(card.getDifference()));
+        for (String banned : BANNED_SUBSTRINGS) {
+            if (combined.contains(banned)) {
+                return true;
+            }
+        }
+        return PERCENT_PATTERN.matcher(combined).find();
+    }
+
+    private String nullToEmpty(String value) {
+        return value == null ? "" : value;
     }
 
     private <T> T callAndParse(String systemPrompt, ObjectNode payload, Class<T> type) {
