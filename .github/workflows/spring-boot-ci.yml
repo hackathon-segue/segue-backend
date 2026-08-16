@@ -1,0 +1,56 @@
+name: Spring Boot CI
+
+on:
+  pull_request:
+    branches: [main, develop]
+  push:
+    branches: [develop]
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+
+    services:
+      mysql:
+        image: mysql:8.0
+        env:
+          MYSQL_ROOT_PASSWORD: root
+          MYSQL_DATABASE: segue_test
+        ports:
+          - 3306:3306
+        options: >-
+          --health-cmd="mysqladmin ping"
+          --health-interval=10s
+          --health-timeout=5s
+          --health-retries=5
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: JDK 21 설정
+        uses: actions/setup-java@v4
+        with:
+          java-version: '21'
+          distribution: 'temurin'
+
+      - name: Maven 캐시
+        uses: actions/cache@v4
+        with:
+          path: ~/.m2/repository
+          key: ${{ runner.os }}-maven-${{ hashFiles('**/pom.xml') }}
+          restore-keys: |
+            ${{ runner.os }}-maven-
+
+      - name: 빌드
+        env:
+          DB_HOST: localhost
+          DB_PORT: 3306
+          DB_NAME: segue_test
+          DB_USERNAME: root
+          DB_PASSWORD: root
+          OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+        run: ./mvnw -B package -DskipTests
+
+      - name: 빌드 실패 알림
+        if: failure()
+        run: echo "❌ 빌드 실패 — PR을 확인해주세요"
