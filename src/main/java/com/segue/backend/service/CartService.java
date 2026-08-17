@@ -9,6 +9,7 @@ import com.segue.backend.dto.response.CartItemResponse;
 import com.segue.backend.exception.NotFoundException;
 import com.segue.backend.repository.CartItemRepository;
 import com.segue.backend.repository.InventoryRepository;
+import com.segue.backend.repository.ProductRepository;
 import com.segue.backend.repository.SkuRepository;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
@@ -17,6 +18,7 @@ import org.springframework.transaction.annotation.Transactional;
 import java.time.LocalDateTime;
 import java.util.List;
 import java.util.Optional;
+import java.util.stream.Collectors;
 
 /** F0: 장바구니 저장, F2: 장바구니 및 SKU 기준 재고 확인 */
 @Service
@@ -26,6 +28,7 @@ public class CartService {
     private final CartItemRepository cartItemRepository;
     private final SkuRepository skuRepository;
     private final InventoryRepository inventoryRepository;
+    private final ProductRepository productRepository;
     private final CustomerService customerService;
 
     @Transactional
@@ -33,7 +36,7 @@ public class CartService {
         Customer customer = customerService.getById(request.getCustomerId());
         Sku sku = skuRepository.findByProductIdAndColorAndSize(
                         request.getProductId(), request.getColor(), request.getSize())
-                .orElseThrow(() -> new NotFoundException("해당 컬러/사이즈 조합의 SKU를 찾을 수 없습니다."));
+                .orElseThrow(() -> buildSkuNotFoundException(request.getProductId(), request.getColor(), request.getSize()));
 
         CartItem saved = cartItemRepository.save(CartItem.builder()
                 .customer(customer)
@@ -84,5 +87,19 @@ public class CartService {
                 .actionButtonLabel(actionButtonLabel)
                 .savedAt(item.getSavedAt())
                 .build();
+    }
+
+    private NotFoundException buildSkuNotFoundException(Long productId, String color, String size) {
+        if (!productRepository.existsById(productId)) {
+            return new NotFoundException("제품을 찾을 수 없습니다. productId=" + productId);
+        }
+        List<Sku> availableSkus = skuRepository.findByProductId(productId);
+        String options = availableSkus.stream()
+                .map(s -> s.getColor() + "/" + s.getSize())
+                .distinct()
+                .sorted()
+                .collect(Collectors.joining(", "));
+        return new NotFoundException(
+                "선택한 컬러/사이즈 조합(" + color + "/" + size + ")은 존재하지 않습니다. 선택 가능한 옵션: " + options);
     }
 }
