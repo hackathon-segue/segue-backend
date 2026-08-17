@@ -17,6 +17,8 @@ import com.segue.backend.exception.NotFoundException;
 import com.segue.backend.repository.*;
 import lombok.RequiredArgsConstructor;
 import org.springframework.beans.factory.annotation.Value;
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.Pageable;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -203,12 +205,11 @@ public class ConsultationService {
     }
 
     @Transactional(readOnly = true)
-    public List<ConsultationResultResponse> getResultsForCustomer(Long customerId) {
+    public Page<ConsultationResultResponse> getResultsForCustomer(Long customerId, Pageable pageable) {
         // 기능명세서 5번: 동의한 경우에만 고객 모바일에서 상담 결과를 재확인할 수 있다.
         customerService.requireConsent(customerId);
-        return consultationResultRepository.findByCustomerIdOrderByConsultedAtDesc(customerId).stream()
-                .map(ConsultationResultResponse::from)
-                .toList();
+        return consultationResultRepository.findByCustomerIdOrderByConsultedAtDesc(customerId, pageable)
+                .map(ConsultationResultResponse::from);
     }
 
     // ---------- helpers ----------
