@@ -8,9 +8,17 @@ Base URL (로컬): `http://localhost:8080`
 { "message": "사람이 읽을 수 있는 에러 설명" }
 ```
 - 404: 리소스 없음 (예: 고객/SKU 조회 실패)
-- 400: 요청 값 검증 실패
+- 400: 요청 값 검증 실패 (Bean Validation)
 - 403: 고객 동의가 필요함 (기능명세서 5번, 아래 "동의 관리" 참고)
 - 502: AI(OpenAI) 호출 실패
+
+### 400 Bad Request — Bean Validation 실패 예시
+
+필수 필드 누락, 타입 불일치 등 `@Valid` 검증에 실패하면 400을 반환한다. `message`에는 실패한 필드명과 사유가 세미콜론(`;`)으로 구분되어 포함된다.
+
+```json
+{ "message": "customerId: must not be null; color: must not be blank" }
+```
 
 ---
 
