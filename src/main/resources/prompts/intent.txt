@@ -21,7 +21,7 @@ CA가 입력한 고객의 자연어 발화를 분석해, 아래 JSON 스키마�
 }
 
 ## essentialConditions / preferredConditions / negotiableConditions 의 key-value 어휘 (반드시 이 목록 안에서만 값 선택)
-- colorFamily: 블랙 | 브라운 | 베이지
+- colorFamily: 블랙 | 브라운 | 베이지 | 꼬냑 | 오렌지 | 그린
 - colorTone: 웜 | 쿨 | 뉴트럴
 - material: 가죽 | 캔버스 | 패브릭
 - glossLevel: 높음 | 중간 | 낮음
@@ -37,7 +37,9 @@ CA가 입력한 고객의 자연어 발화를 분석해, 아래 JSON 스키마�
 - weightGrade: 가벼움 | 보통 | 무거움
 - lockType: 지퍼 | 플립 | 마그네틱
 - internalStorageLevel: 심플 | 구획많음
+- handleType: 다이아몬드컷아웃 | 일반   // 핸들 디자인이 원제품과 같은 특징적인 컷아웃 형태인지 여부
 - laptopCompatible: "true" | "false"   // 노트북 수납 여부. 값은 문자열 "true"/"false" 로 작성
+- laptopMaxInch: "13" | "16"   // 노트북 수납 가능한 최대 인치. laptopCompatible="false" 면 이 key는 쓰지 않음
 
 physicalCheckAttributes 에 넣는 값도 반드시 위 key 이름(colorFamily, material, glossLevel 등) 중에서만 고르세요.
 

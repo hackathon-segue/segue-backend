@@ -96,7 +96,30 @@ public class DecisionEngine {
                         .reasonCode("PHYSICAL_CHECK_MATCH")
                         .build();
             }
-            // 실물 확인을 대체할 매장 내 후보가 없으면 원제품 확보 경로로 폴백한다
+            // 실물 확인 요청은 있었지만 그 속성까지 원제품과 일치하는 후보가 없다 ->
+            // 아래 ③-보조 폴백으로 넘어간다 (physicalCheck 값 자체가 essential 밖의 비필수
+            // 속성이었을 수 있으므로, essential 만족 후보가 있다면 그걸로 대체 제시한다).
+        }
+        if (!essential.isEmpty()) {
+            // ③-보조: 실물 확인 요청이 없었거나(physicalCheck 비어있음), 있었지만 그 속성까지는
+            // 매칭되는 후보가 없었던 경우. 필수 조건 자체는 뚜렷하고 그 조건을 만족하는 다른 SKU 가
+            // 이미 매장에 있다면, 원제품의 비필수 속성(색상/소재 등)에는 애초에 집착하지 않았으므로
+            // (그래서 essential 이 좁게 잡혔으므로) 굳이 원제품 확보를 기다리게 하기보다 지금 매장에
+            // 있는 조건 일치 제품을 우선 제시한다.
+            List<Candidate> essentialMatchesInStock = essentialCandidates.stream()
+                    .filter(Candidate::isInStockAtCurrentStore)
+                    .filter(Candidate::isInventoryReliable)
+                    .toList();
+            if (!essentialMatchesInStock.isEmpty()) {
+                Candidate best = rankByPreferred(essentialMatchesInStock, preferred);
+                return DecisionResult.builder()
+                        .resultType(ResultType.COMPARISON_EXPERIENCE)
+                        .recommendedSku(best.getSku())
+                        .matchedEssentialKeys(matchedKeys(best.getAttribute(), best.getSku(), essential))
+                        .matchedPreferredKeys(matchedKeys(best.getAttribute(), best.getSku(), preferred))
+                        .reasonCode("ESSENTIAL_MATCH_IN_STORE")
+                        .build();
+            }
         }
 
         // ④ 원제품 확보: 타 매장 방문 또는 대기 가능하고, 원제품 자체가 필수 조건을 만족할 때
@@ -179,6 +202,9 @@ public class DecisionEngine {
             case "internalStorageLevel" -> a == null ? null : a.getInternalStorageLevel();
             case "laptopCompatible" -> sku == null || sku.getLaptopCompatible() == null
                     ? null : String.valueOf(sku.getLaptopCompatible());
+            case "laptopMaxInch" -> sku == null || sku.getLaptopMaxInch() == null
+                    ? null : String.valueOf(sku.getLaptopMaxInch());
+            case "handleType" -> a == null ? null : a.getHandleType();
             default -> null;
         };
     }
