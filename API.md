@@ -16,6 +16,7 @@ Base URL (로컬): `http://localhost:8080`
 
 ## 전체 플로우 순서 (프론트 구현 가이드)
 
+0. **고객 모바일**: `GET /api/products` 로 제품 목록 브라우징 → `GET /api/products/{id}` 로 제품 상세(컬러·사이즈 옵션) 확인
 1. **고객 모바일**: `POST /api/cart` 로 컬러/사이즈 선택 후 담기
 2. **태블릿**: `GET /api/customers/lookup` 로 고객 조회
 3. 응답의 `hasConsented` 가 `false` 면 데이터 이용 동의 화면을 먼저 보여주고 `POST /api/customers/{id}/consent` 로 기록
@@ -29,6 +30,51 @@ Base URL (로컬): `http://localhost:8080`
 11. **고객 모바일**: `GET /api/consultations/customers/{customerId}?page=0&size=10` 으로 결과 및 현재 처리 상태 확인
 
 > **무상태 설계**: 서버는 상담 진행 중 상태를 세션으로 들고 있지 않는다. 5-9 단계에서 서버가 응답한 값(특히 `structuredIntent`, `decide` 응답 전체)은 프론트가 들고 있다가 다음 요청에 그대로 담아 보내야 한다.
+
+---
+
+## 0. 제품 목록/상세 조회 (F0)
+
+고객 모바일에서 장바구니에 담기 전, 제품을 브라우징하고 컬러/사이즈를 고르는 단계. DB 기반이며 프론트에서 더미로 만들지 않는다.
+
+### `GET /api/products`
+
+응답 `200`:
+```json
+[
+  { "id": 1, "name": "MCM 백팩 미디움", "imageUrl": "https://...", "category": "백팩" },
+  { "id": 2, "name": "MCM 크로스바디 백 스몰", "imageUrl": "https://...", "category": "크로스바디" }
+]
+```
+
+### `GET /api/products/{productId}`
+
+제품 상세 + 이 제품이 가진 모든 컬러·사이즈 SKU 옵션.
+
+응답 `200`:
+```json
+{
+  "id": 1,
+  "name": "MCM 백팩 미디움",
+  "imageUrl": "https://...",
+  "category": "백팩",
+  "options": [
+    {
+      "skuId": 1,
+      "color": "블랙",
+      "size": "미디움",
+      "material": "그레인 카프스킨 가죽",
+      "weightGrams": 650,
+      "storageStructure": "지퍼형 메인 수납 + 노트북 슬리브",
+      "wearStyle": "백팩(양쪽 숄더)",
+      "laptopCompatible": true
+    }
+  ]
+}
+```
+응답 `404`: 제품 없음.
+
+프론트는 `options` 중 고객이 고른 `color`/`size`를 그대로 `POST /api/cart` 요청의 `color`/`size`에 넣으면 된다 (아래 F0 장바구니 저장 참고).
 
 ---
 

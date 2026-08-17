@@ -42,4 +42,8 @@ public class Sku {
 
     @Column(name = "laptop_compatible", nullable = false)
     private Boolean laptopCompatible;
+
+    /** 노트북 수납 최대 인치 (13 | 16). laptopCompatible=false 면 null. */
+    @Column(name = "laptop_max_inch")
+    private Integer laptopMaxInch;
 }

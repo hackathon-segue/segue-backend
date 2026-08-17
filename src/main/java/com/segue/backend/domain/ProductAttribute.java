@@ -71,4 +71,8 @@ public class ProductAttribute {
 
     @Column(name = "internal_storage_level", length = 50)
     private String internalStorageLevel;
+
+    /** 핸들 디자인 (예: 다이아몬드컷아웃 | 일반). 실루엣/구조만으로 구분 안 되는 핸들 디테일용 */
+    @Column(name = "handle_type", length = 50)
+    private String handleType;
 }
