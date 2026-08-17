@@ -26,7 +26,7 @@ Base URL (로컬): `http://localhost:8080`
 8. `POST /api/consultations/decide` 호출 (이 호출 동안 프론트는 "AI 분석 중" 로딩 상태만 표시, 별도 화면 전환 없음)
 9. Last Intent Card 표시 → 실행 버튼 탭 → `POST /api/consultations/execute`
 10. 완료 메시지 표시. 이후 CA가 실제 확인 결과를 알게 되면 `PATCH /api/consultations/{id}/execution-status` 로 후속 상태 갱신
-11. **고객 모바일**: `GET /api/consultations/customers/{customerId}` 로 결과 및 현재 처리 상태 확인
+11. **고객 모바일**: `GET /api/consultations/customers/{customerId}?page=0&size=10` 으로 결과 및 현재 처리 상태 확인
 
 > **무상태 설계**: 서버는 상담 진행 중 상태를 세션으로 들고 있지 않는다. 5-9 단계에서 서버가 응답한 값(특히 `structuredIntent`, `decide` 응답 전체)은 프론트가 들고 있다가 다음 요청에 그대로 담아 보내야 한다.
 
@@ -358,27 +358,55 @@ CA가 고객에게 데이터 이용 목적·범위를 안내한 뒤 동의/비�
 
 ## 10. 고객 모바일 상담 결과 조회 (F8)
 
-### `GET /api/consultations/customers/{customerId}`
+### `GET /api/consultations/customers/{customerId}?page={page}&size={size}`
+
+| 파라미터 | 타입 | 기본값 | 설명 |
+|---|---|---|---|
+| page | int (query) | 0 | 조회할 페이지 번호 (0부터 시작) |
+| size | int (query) | 10 | 한 페이지당 결과 수 |
+
+정렬 기준: `consultedAt` DESC (최신 상담순). 동의하지 않은 고객이면 `403`.
 
 응답 `200`:
 ```json
-[
-  {
-    "id": 5,
-    "skuId": 1,
-    "productName": "MCM 백팩 미디움",
-    "imageUrl": "https://...",
-    "resultType": "EXACT_PRODUCT",
-    "recommendedPath": "강남 신세계점 재고 확인",
-    "coreConditions": "로고가 정면 중앙에 오는 각진 실루엣을 중요하게 보고 계셨습니다.",
-    "consultedAt": "2026-08-16T15:20:00",
-    "executionStatus": "REQUESTED",
-    "executionNote": null,
-    "executionUpdatedAt": "2026-08-16T15:20:00"
-  }
-]
+{
+  "content": [
+    {
+      "id": 5,
+      "skuId": 1,
+      "productName": "MCM 백팩 미디움",
+      "imageUrl": "https://...",
+      "resultType": "EXACT_PRODUCT",
+      "recommendedPath": "강남 신세계점 재고 확인",
+      "coreConditions": "로고가 정면 중앙에 오는 각진 실루엣을 중요하게 보고 계셨습니다.",
+      "consultedAt": "2026-08-16T15:20:00",
+      "executionStatus": "REQUESTED",
+      "executionNote": null,
+      "executionUpdatedAt": "2026-08-16T15:20:00"
+    }
+  ],
+  "totalElements": 1,
+  "totalPages": 1,
+  "number": 0,
+  "size": 10,
+  "first": true,
+  "last": true,
+  "empty": false
+}
 ```
-최신 상담순(`consultedAt` DESC). 동의하지 않은 고객이면 `403`.
+
+주요 페이지네이션 필드:
+
+| 필드 | 타입 | 설명 |
+|---|---|---|
+| content | array | 현재 페이지의 상담 결과 목록 |
+| totalElements | long | 전체 상담 결과 수 |
+| totalPages | int | 전체 페이지 수 |
+| number | int | 현재 페이지 번호 (0부터 시작) |
+| size | int | 한 페이지당 크기 |
+| first | boolean | 첫 번째 페이지 여부 |
+| last | boolean | 마지막 페이지 여부 |
+| empty | boolean | 현재 페이지가 비어있는지 여부 |
 
 `executionStatus` 값: `REQUESTED`(요청 접수) \| `UNABLE`(실행 불가) \| `FOLLOW_UP_NEEDED`(후속 확인 필요). 모바일 화면은 이 값에 따라 "확인 중" / "확인 어려움 — 사유: {executionNote}" / "추가 확인 필요 — {executionNote}" 등으로 표시하면 된다.
 
