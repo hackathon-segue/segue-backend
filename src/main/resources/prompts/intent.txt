@@ -50,6 +50,144 @@ physicalCheckAttributes 에 넣는 값도 반드시 위 key 이름(colorFamily, 
 - 발화가 "그냥 비슷한 거 보여주세요"처럼 구체적 속성이나 목적, 시급성이 전혀 드러나지 않으면 essentialConditions={}, physicalCheckAttributes=[], canWait=null, canVisitOtherStore=null 로 두고 needsFollowUp=true 로 설정하세요.
 - 절대 존재하지 않는 속성 key 를 만들어내지 마세요. 반드시 위 어휘 목록 안에서만 선택합니다.
 
+## few-shot 예시
+아래 예시는 essentialConditions 를 과도하게 많이 추출하거나, 반대로 반드시 유지해야 하는 조건을 빠뜨리는 일을 막기 위한 기준입니다.
+예시와 같은 기준으로 고객 발화를 분류하되, 최종 출력은 항상 JSON 객체 하나만 반환하세요.
+
+### 예시 1: 강한 필수 표현이 있는 속성만 essentialConditions 로 둔다
+입력:
+{ "conversation": "이 로고가 정면 가운데 보이는 게 제일 중요하고, 각진 형태여야 해요. 오늘 꼭 살 필요는 없어요." }
+
+출력:
+{
+  "purpose": "",
+  "essentialConditions": {
+    "logoPosition": "정면중앙",
+    "silhouette": "각진"
+  },
+  "preferredConditions": {},
+  "negotiableConditions": {},
+  "purchaseUrgency": "FLEXIBLE",
+  "physicalCheckAttributes": [],
+  "canWait": true,
+  "canVisitOtherStore": null,
+  "needsFollowUp": false,
+  "followUpReason": ""
+}
+
+분류 기준:
+- "제일 중요", "여야 해요"처럼 강한 표현이 있는 로고 위치와 실루엣만 essentialConditions 에 넣습니다.
+- 오늘 꼭 살 필요가 없다는 말은 대기 가능 신호이므로 purchaseUrgency="FLEXIBLE", canWait=true 입니다.
+- 타 매장 방문 가능 여부는 직접 말하지 않았으므로 canVisitOtherStore=null 입니다.
+
+### 예시 2: 실물로 확인하고 싶은 요소는 essentialConditions 에 넣지 않는다
+입력:
+{ "conversation": "원래 보던 제품이 아니어도 괜찮아요. 비슷한 제품도 좋아요. 다만 가죽 느낌이랑 광택은 직접 보고 싶어요." }
+
+출력:
+{
+  "purpose": "",
+  "essentialConditions": {},
+  "preferredConditions": {},
+  "negotiableConditions": {},
+  "purchaseUrgency": "FLEXIBLE",
+  "physicalCheckAttributes": ["material", "glossLevel"],
+  "canWait": null,
+  "canVisitOtherStore": null,
+  "needsFollowUp": false,
+  "followUpReason": ""
+}
+
+분류 기준:
+- "원래 보던 제품이 아니어도 괜찮아요", "비슷한 제품도 좋아요"는 원제품 속성을 필수로 고정하지 않는다는 뜻입니다.
+- "직접 보고 싶어요"는 실물 확인 요구이므로 material, glossLevel 을 physicalCheckAttributes 에 넣습니다.
+- 기다릴 수 있다는 직접 표현이 없으므로 canWait 를 true 로 추측하지 않습니다.
+
+### 예시 3: 선호와 양보 가능 조건은 essentialConditions 에 넣지 않는다
+입력:
+{ "conversation": "브라운 계열이면 좋고 로고는 너무 튀지 않았으면 해요. 그런데 사이즈는 미니가 아니면 안 돼요." }
+
+출력:
+{
+  "purpose": "",
+  "essentialConditions": {
+    "sizeGrade": "미니"
+  },
+  "preferredConditions": {
+    "colorFamily": "브라운",
+    "logoVisibility": "낮음"
+  },
+  "negotiableConditions": {},
+  "purchaseUrgency": "FLEXIBLE",
+  "physicalCheckAttributes": [],
+  "canWait": null,
+  "canVisitOtherStore": null,
+  "needsFollowUp": false,
+  "followUpReason": ""
+}
+
+분류 기준:
+- "아니면 안 돼요"라고 말한 sizeGrade 만 essentialConditions 입니다.
+- "이면 좋고", "않았으면 해요"는 선호 표현이므로 preferredConditions 로 분리합니다.
+
+### 예시 4: 오늘 구매와 필수 수납 조건을 분리한다
+입력:
+{ "conversation": "오늘 바로 살 수 있는 게 필요하고, 노트북은 꼭 들어가야 해요. 색은 검정이면 좋지만 아니어도 괜찮아요." }
+
+출력:
+{
+  "purpose": "노트북 수납 가능한 데일리/오피스용 가방",
+  "essentialConditions": {
+    "laptopCompatible": "true"
+  },
+  "preferredConditions": {
+    "colorFamily": "블랙"
+  },
+  "negotiableConditions": {
+    "colorFamily": "블랙"
+  },
+  "purchaseUrgency": "TODAY",
+  "physicalCheckAttributes": [],
+  "canWait": false,
+  "canVisitOtherStore": false,
+  "needsFollowUp": false,
+  "followUpReason": ""
+}
+
+분류 기준:
+- "꼭 들어가야 해요"는 필수 조건이므로 laptopCompatible="true" 입니다. laptopCompatible 값은 반드시 문자열입니다.
+- "검정이면 좋지만 아니어도 괜찮아요"는 선호이면서 양보 가능 조건이므로 essentialConditions 에 넣지 않습니다.
+- "오늘 바로 살 수 있는"은 purchaseUrgency="TODAY", canWait=false, canVisitOtherStore=false 입니다.
+
+### 예시 5: 정보가 부족하면 임의 추론하지 않고 follow-up 이 필요하다고 표시한다
+입력:
+{ "conversation": "그냥 비슷한 느낌으로 추천해 주세요." }
+
+출력:
+{
+  "purpose": "",
+  "essentialConditions": {},
+  "preferredConditions": {},
+  "negotiableConditions": {},
+  "purchaseUrgency": "FLEXIBLE",
+  "physicalCheckAttributes": [],
+  "canWait": null,
+  "canVisitOtherStore": null,
+  "needsFollowUp": true,
+  "followUpReason": "고객이 반드시 유지해야 하는 속성과 구매 시급성을 구체적으로 말하지 않음"
+}
+
+분류 기준:
+- "비슷한 느낌"만으로 색상, 소재, 로고, 실루엣 등을 임의로 채우지 않습니다.
+- 필수 조건과 구매 상황을 판단하기에 정보가 부족하므로 needsFollowUp=true 입니다.
+
+### 예시 적용 체크리스트
+- essentialConditions 는 0개일 수 있습니다. 근거 없이 채우지 마세요.
+- essentialConditions 가 3개 이상이 되면 고객이 실제로 "필수", "꼭", "아니면 안 됨", "절대" 수준으로 말했는지 다시 확인하세요.
+- 단순 취향은 preferredConditions, 양보 가능 표현은 negotiableConditions, 실물 확인 요구는 physicalCheckAttributes 로 분리하세요.
+- 같은 key 를 essentialConditions 와 preferredConditions 에 동시에 넣지 마세요.
+- 모든 key/value 는 위 어휘표에 있는 값만 사용하세요.
+
 ## 입력
 user 메시지는 다음 형식의 JSON 문자열입니다.
 { "conversation": "CA가 기록한 고객 발화 전문 (보충 질문/답변이 있으면 함께 포함됨)" }
