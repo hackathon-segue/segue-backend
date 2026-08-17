@@ -106,6 +106,13 @@ customer (고객)     │     └── product_attribute (1:1, 매칭용 사전
 > 값을 "확정 구매 가능 경로"로 사용하지 않고 추가 상담(`ADDITIONAL_CONSULTATION`, reasonCode
 > `URGENCY_TODAY_STOCK_UNVERIFIED` / `INVENTORY_UNVERIFIED`)으로 전환한다. 임계값은 GitHub 이슈
 > #19 에서 팀 결정 대상으로 추적 중이다.
+>
+> **`other_store_in_stock` 의 신뢰도는 어느 행의 `confirmed`/`checked_at` 을 보는가**: 이 값은
+> "현재 매장" 행(예: 청담 본점 행)에 함께 저장된 값이므로, 신뢰도도 **그 현재 매장 행 자신의**
+> `confirmed`/`checked_at` 기준으로 판단한다 (강남 신세계점 행 쪽의 `confirmed` 를 바꿔도 영향 없음).
+> 페르소나 4(원제품 SKU 1, 청담 본점 행)를 대상으로 청담 행의 `confirmed` 를 0으로 바꾼 뒤 실제
+> 재검증한 결과 `EXACT_PRODUCT` → `ADDITIONAL_CONSULTATION`(reasonCode `INVENTORY_UNVERIFIED`)으로
+> 정확히 전환되는 것을 확인했다 (이슈 #19).
 
 ## 6. customer (고객)
 
