@@ -42,6 +42,7 @@ public class DataLoader implements CommandLineRunner {
     @Transactional
     public void run(String... args) {
         if (customerRepository.count() > 0) {
+            refreshInventoryCheckedAt();
             return; // 이미 시딩된 경우 재실행하지 않음
         }
 
@@ -182,6 +183,22 @@ public class DataLoader implements CommandLineRunner {
         cartItemRepository.save(CartItem.builder()
                 .customer(lee).sku(s1).color(s1.getColor()).size(s1.getSize())
                 .savedAt(now.minusHours(1)).build());
+    }
+
+    /**
+     * 이미 시딩된 DB 로 재기동할 때 재고 확인 시각을 현재로 동기화한다.
+     *
+     * checked_at 은 최초 시딩 때 한 번만 찍히는데 MySQL 은 영속이므로, 갱신하지 않으면 시딩 시점이
+     * 그대로 고정된다. inventory.freshness-hours(기본 12시간)를 넘긴 순간부터 DecisionEngine 의
+     * isReliable() 이 모든 행에 대해 false 를 반환해 4가지 결과가 전부 추가 상담으로 수렴하며,
+     * 재시작으로는 복구되지 않는다.
+     *
+     * 실제 매장에서도 시스템 기동 시 POS 재고를 한 번 동기화하므로 의미상으로도 동일하다.
+     * confirmed(확인 여부) 는 데이터가 가진 원래 값을 그대로 두고 시각만 갱신한다.
+     */
+    private void refreshInventoryCheckedAt() {
+        LocalDateTime now = LocalDateTime.now();
+        inventoryRepository.findAll().forEach(inventory -> inventory.setCheckedAt(now));
     }
 
     private Sku createSku(Store cheongdam, Store gangnam,
