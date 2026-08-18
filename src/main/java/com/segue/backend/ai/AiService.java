@@ -136,8 +136,14 @@ public class AiService {
         String responseJson = openAiClient.callJson(systemPrompt, payload.toString());
         try {
             return objectMapper.readValue(responseJson, type);
-        } catch (Exception e) {
-            throw new IllegalStateException("AI 응답을 파싱하지 못했습니다: " + responseJson, e);
+        } catch (Exception firstParseError) {
+            // Issue #16: JSON 파싱 실패 시 OpenAI 1회 재호출 후 다시 파싱 시도
+            String retryJson = openAiClient.callJson(systemPrompt, payload.toString());
+            try {
+                return objectMapper.readValue(retryJson, type);
+            } catch (Exception secondParseError) {
+                throw new IllegalStateException("AI 응답을 파싱하지 못했습니다 (재시도 포함): " + retryJson, secondParseError);
+            }
         }
     }
 }
