@@ -38,13 +38,22 @@ public class CartService {
                         request.getProductId(), request.getColor(), request.getSize())
                 .orElseThrow(() -> buildSkuNotFoundException(request.getProductId(), request.getColor(), request.getSize()));
 
-        CartItem saved = cartItemRepository.save(CartItem.builder()
-                .customer(customer)
-                .sku(sku)
-                .color(request.getColor())
-                .size(request.getSize())
-                .savedAt(LocalDateTime.now())
-                .build());
+        // F2 는 장바구니를 "최근 담은 순"으로 보여주고 항목마다 상담 시작 버튼을 배치한다.
+        // 같은 SKU 를 다시 담았을 때 행을 늘리면 태블릿에 동일한 제품이 여러 줄로 뜨고
+        // "Last Intent 시작" 버튼도 중복되므로, 새 행을 만들지 않고 담은 시각만 갱신한다.
+        CartItem saved = cartItemRepository
+                .findFirstByCustomerIdAndSkuIdOrderBySavedAtDesc(customer.getId(), sku.getId())
+                .map(existing -> {
+                    existing.setSavedAt(LocalDateTime.now());
+                    return existing;
+                })
+                .orElseGet(() -> cartItemRepository.save(CartItem.builder()
+                        .customer(customer)
+                        .sku(sku)
+                        .color(request.getColor())
+                        .size(request.getSize())
+                        .savedAt(LocalDateTime.now())
+                        .build()));
 
         // 신규 저장 시점에는 재고 조회 없이도 표시 가능하므로 store 문맥 없이 기본 응답을 만든다.
         return toResponse(saved, null);
