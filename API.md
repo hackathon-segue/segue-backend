@@ -86,6 +86,47 @@ Base URL (로컬): `http://localhost:8080`
 
 ---
 
+## 0-1. CA 수동 제품 검색 (Issue #5)
+
+CA가 태블릿에서 제품을 수동 검색하는 백업 API. 제품명을 기본 조건으로, 선택적으로 SKU의 컬러/사이즈 조건을 추가할 수 있다. 컬러/사이즈를 지정하면 해당 조건에 맞는 SKU 옵션만 결과에 포함되고, 매칭 SKU가 없는 제품은 결과에서 제외된다.
+
+### `GET /api/products/search`
+
+| 파라미터 | 타입 | 필수 | 설명 |
+|---|---|---|---|
+| name | string (query) | ✅ | 제품명 검색어 (부분 일치, 대소문자 무시) |
+| color | string (query) | ❌ | SKU 컬러 필터 (정확 일치, 대소문자 무시) |
+| size | string (query) | ❌ | SKU 사이즈 필터 (정확 일치, 대소문자 무시) |
+
+응답 `200`:
+```json
+[
+  {
+    "id": 1,
+    "name": "MCM 백팩 미디움",
+    "imageUrl": "https://...",
+    "category": "백팩",
+    "options": [
+      {
+        "skuId": 1,
+        "color": "블랙",
+        "size": "미디움",
+        "material": "그레인 카프스킨 가죽",
+        "weightGrams": 650,
+        "storageStructure": "지퍼형 메인 수납 + 노트북 슬리브",
+        "wearStyle": "백팩(양쪽 숄더)",
+        "laptopCompatible": true
+      }
+    ]
+  }
+]
+```
+- 검색 결과가 없으면 빈 배열 `[]` 을 반환한다 (404가 아님).
+- `options` 배열에는 컬러/사이즈 필터를 통과한 SKU만 포함된다.
+- 컬러/사이즈를 지정하지 않으면 해당 제품의 모든 SKU 옵션이 포함된다.
+
+---
+
 ## 1. 고객 조회 (F1)
 
 ### `GET /api/customers/lookup?phoneNumber={phoneNumber}`
