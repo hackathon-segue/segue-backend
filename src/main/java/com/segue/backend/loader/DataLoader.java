@@ -54,6 +54,7 @@ public class DataLoader implements CommandLineRunner {
         // ---------- 1. 원제품 (공통 미보유 기준 제품) ----------
         Sku s1 = createSku(cheongdam, gangnam,
                 "M Diamond 비세토스 레더 믹스", "핸드백",
+                "/images/products/bag1.png",
                 "꼬냑", "M", "비세토스 모노그램 캔버스 + 나파 송아지 가죽 트림", 480,
                 "지퍼 클로저 + 내부 포켓", "핸드백/크로스바디 겸용", false, null,
                 Attr.of("꼬냑", "웜", "캔버스", "낮음", "높음", "정면중앙", "높음", "사각", "하드",
@@ -63,6 +64,7 @@ public class DataLoader implements CommandLineRunner {
         // ---------- 2. 디자인형 정답: M Diamond 엠보스드 레더 · 블랙 ----------
         createSku(cheongdam, gangnam,
                 "M Diamond 엠보스드 레더", "핸드백",
+                "/images/products/bag2.png",
                 "블랙", "M", "엠보스드 레더", 470,
                 "지퍼 클로저 + 내부 포켓", "핸드백/크로스바디 겸용", false, null,
                 Attr.of("블랙", "쿨", "가죽", "중간", "낮음", "정면하단", "낮음", "사각", "하드",
@@ -72,6 +74,7 @@ public class DataLoader implements CommandLineRunner {
         // ---------- 3. 시그니처·소재형 정답: M New Liz 비세토스 쇼퍼 · 꼬냑 ----------
         createSku(cheongdam, gangnam,
                 "M New Liz 비세토스 쇼퍼", "쇼퍼백",
+                "/images/products/bag3.png",
                 "꼬냑", "M", "비세토스 모노그램 캔버스 + 천연 가죽 트림", 520,
                 "탈착형 지퍼 파우치 포함, 오픈탑", "숄더", false, null,
                 Attr.of("꼬냑", "웜", "캔버스", "낮음", "높음", "정면중앙", "높음", "사각", "소프트",
@@ -81,6 +84,7 @@ public class DataLoader implements CommandLineRunner {
         // ---------- 4. 기능형 정답: L Aren 비세토스 N/S 토트 · 블랙 ----------
         createSku(cheongdam, gangnam,
                 "L Aren 비세토스 N/S 토트", "토트백",
+                "/images/products/bag4.png",
                 "블랙", "L", "비세토스 모노그램 캔버스 + 가죽 트림", 780,
                 "16인치 노트북·태블릿 포켓 + 다수의 내부 포켓", "토트(손잡이 + 숄더스트랩)", true, 16,
                 Attr.of("블랙", "쿨", "캔버스", "낮음", "높음", "정면중앙", "높음", "사각", "하드",
@@ -90,6 +94,7 @@ public class DataLoader implements CommandLineRunner {
         // ---------- 5. 디자인 혼동 후보 A: S 뮌헨 비세토스 토트 · 꼬냑 (실루엣만 비슷, 핸들 다름) ----------
         createSku(cheongdam, gangnam,
                 "S 뮌헨 비세토스 토트", "토트백",
+                "/images/products/bag5.png",
                 "꼬냑", "S", "비세토스 모노그램 캔버스 + 가죽 핸들", 430,
                 "지퍼 클로저 + 심플 수납", "토트/크로스바디 겸용", false, null,
                 Attr.of("꼬냑", "웜", "캔버스", "낮음", "높음", "정면중앙", "높음", "사각", "하드",
@@ -99,6 +104,7 @@ public class DataLoader implements CommandLineRunner {
         // ---------- 6. 디자인 혼동 후보 B: 미니 Diamond 카프 레더 숄더백 · 블랙 (핸들 일부만 유사) ----------
         createSku(cheongdam, gangnam,
                 "미니 Diamond 카프 레더 숄더백", "숄더백",
+                "/images/products/bag6.png",
                 "블랙", "미니", "카프 레더", 290,
                 "플랩형 단일 수납", "숄더", false, null,
                 Attr.of("블랙", "쿨", "가죽", "중간", "낮음", "정면하단", "낮음", "라운드", "소프트",
@@ -108,6 +114,7 @@ public class DataLoader implements CommandLineRunner {
         // ---------- 7. 소재 혼동 후보 A: S Milla 그레인 가죽 토트 · 오렌지에이드 ----------
         createSku(cheongdam, gangnam,
                 "S Milla 그레인 가죽 토트", "토트백",
+                "/images/products/bag7.png",
                 "오렌지에이드", "S", "그레인 가죽", 460,
                 "지퍼 클로저 + 심플 수납", "토트/크로스바디 겸용", false, null,
                 Attr.of("오렌지", "웜", "가죽", "높음", "낮음", "정면하단", "낮음", "각진", "하드",
@@ -117,6 +124,7 @@ public class DataLoader implements CommandLineRunner {
         // ---------- 8. 시그니처 혼동 후보 B: S Aren 비세토스 듀오 호보 · 블랙 ----------
         createSku(cheongdam, gangnam,
                 "S Aren 비세토스 듀오 호보", "크로스바디",
+                "/images/products/bag8.png",
                 "블랙", "S", "비세토스 모노그램 캔버스 + 나파 가죽", 350,
                 "지퍼형 심플 수납", "크로스바디/숄더", false, null,
                 Attr.of("블랙", "쿨", "캔버스", "낮음", "중간", "정면중앙", "중간", "라운드", "소프트",
@@ -126,6 +134,7 @@ public class DataLoader implements CommandLineRunner {
         // ---------- 9. 기능 혼동 후보 A: M Stark 사이드 스터드 비세토스 백팩 · 꼬냑 (13인치까지만) ----------
         createSku(cheongdam, gangnam,
                 "M Stark 사이드 스터드 비세토스 백팩", "백팩",
+                "/images/products/bag9.png",
                 "꼬냑", "M", "비세토스 모노그램 캔버스 + 가죽 트림", 650,
                 "지퍼형 메인 수납 + 13인치 노트북 슬리브", "백팩(양쪽 숄더)", true, 13,
                 Attr.of("꼬냑", "웜", "캔버스", "낮음", "높음", "정면중앙", "높음", "사각", "소프트",
@@ -135,6 +144,7 @@ public class DataLoader implements CommandLineRunner {
         // ---------- 10. 기능 혼동 후보 B: M Aren ECONYL 가죽 백팩 · 그린 (스펙은 맞지만 오늘 재고 없음) ----------
         createSku(cheongdam, gangnam,
                 "M Aren ECONYL 가죽 백팩", "백팩",
+                "/images/products/bag10.png",
                 "그린", "M", "ECONYL 재생나일론 + 가죽 트림", 600,
                 "16인치 노트북 슬리브 + 다수 포켓", "백팩(양쪽 숄더)", true, 16,
                 Attr.of("그린", "쿨", "패브릭", "중간", "낮음", "정면하단", "낮음", "사각", "소프트",
@@ -144,6 +154,7 @@ public class DataLoader implements CommandLineRunner {
         // ---------- 11. 명확한 비적합 후보 A: 미니 Tracy 비세토스 레더 믹스 크로스바디 · 꼬냑 ----------
         createSku(cheongdam, gangnam,
                 "미니 Tracy 비세토스 레더 믹스 크로스바디", "크로스바디",
+                "/images/products/bag11.png",
                 "꼬냑", "미니", "비세토스 모노그램 캔버스 + 가죽 트림", 220,
                 "플립형 심플 수납", "크로스바디", false, null,
                 Attr.of("꼬냑", "웜", "캔버스", "낮음", "높음", "정면중앙", "높음", "각진", "소프트",
@@ -153,6 +164,7 @@ public class DataLoader implements CommandLineRunner {
         // ---------- 12. 명확한 비적합 후보 B: S Pina 비세토스 탬버린 백 · 꼬냑 ----------
         createSku(cheongdam, gangnam,
                 "S Pina 비세토스 탬버린 백", "크로스바디",
+                "/images/products/bag12.png",
                 "꼬냑", "S", "비세토스 모노그램 캔버스", 280,
                 "지퍼형 단일 수납", "크로스바디", false, null,
                 Attr.of("꼬냑", "웜", "캔버스", "낮음", "높음", "정면중앙", "높음", "라운드", "하드",
@@ -185,7 +197,7 @@ public class DataLoader implements CommandLineRunner {
     }
 
     private Sku createSku(Store cheongdam, Store gangnam,
-                           String productName, String category,
+                           String productName, String category, String imageUrl,
                            String color, String size, String materialText, Integer weightGrams,
                            String storageStructure, String wearStyle,
                            boolean laptopCompatible, Integer laptopMaxInch,
@@ -193,7 +205,7 @@ public class DataLoader implements CommandLineRunner {
                            boolean inStockAtCheongdam, boolean confirmed, boolean inStockAtGangnam) {
         Product product = productRepository.save(Product.builder()
                 .name(productName)
-                .imageUrl("https://picsum.photos/seed/" + slug(productName) + "/600/600")
+                .imageUrl(imageUrl)
                 .category(category)
                 .build());
 
@@ -227,10 +239,6 @@ public class DataLoader implements CommandLineRunner {
                 .build());
 
         return sku;
-    }
-
-    private String slug(String productName) {
-        return productName.replaceAll("[^a-zA-Z0-9]", "").toLowerCase();
     }
 
     /** ProductAttribute 16(+1) 개 필드를 인자 순서로 한 번에 받는 값 객체 (DataLoader 내부 전용). */
