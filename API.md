@@ -268,7 +268,7 @@ CA가 고객에게 데이터 이용 목적·범위를 안내한 뒤 동의/비�
 {
   "structuredIntent": {
     "purpose": "",
-    "essentialConditions": { "logoPosition": "정면중앙", "silhouette": "각진" },
+    "essentialConditions": { "logoPosition": "정면중앙", "silhouette": "사각" },
     "preferredConditions": {},
     "negotiableConditions": {},
     "purchaseUrgency": "FLEXIBLE",
@@ -308,7 +308,7 @@ CA가 고객에게 데이터 이용 목적·범위를 안내한 뒤 동의/비�
 | logoVisibility | 높음 \| 중간 \| 낮음 |
 | logoPosition | 정면중앙 \| 정면하단 \| 스트랩 |
 | patternDensity | 높음 \| 중간 \| 낮음 |
-| silhouette | 각진 \| 라운드 \| 사각 |
+| silhouette | 라운드 \| 사각 |
 | structure | 하드 \| 소프트 |
 | sizeGrade | 미니 \| 스몰 \| 미디움 \| 라지 |
 | strapType | 체인스트랩 \| 패브릭스트랩 \| 패브릭+레더콤보 \| 벨트스트랩 |

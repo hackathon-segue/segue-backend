@@ -12,7 +12,18 @@ import java.time.LocalDateTime;
 
 /**
  * P0 요구사항: 하드코딩된 고정 고객 2명 방식이 아니라 DB 테이블 기반으로 동작해야 하므로,
- * 애플리케이션 기동 시 이 클래스가 더미 데이터를 실제 MySQL 테이블에 INSERT 한다.
+ * 애플리케이션 기동 시 이 클래스가 더미 데이터를 실제 MySQL 테이블에 반영한다.
+ *
+ * <b>이 시딩은 멱등(idempotent)하다.</b> 예전에는 "고객이 한 명이라도 있으면 아무것도 하지 않고 반환"
+ * 하는 가드가 있었는데, MySQL 은 영속이므로 코드에서 시드 데이터를 고쳐도 기존 DB 에는 영원히
+ * 반영되지 않는 문제가 있었다. 실제로 두 번 발생했다.
+ * <ul>
+ *   <li>checked_at 이 최초 시딩 시각에 고정되어 12시간 후 모든 재고가 미확인 처리됨</li>
+ *   <li>제품 이미지 경로를 picsum 에서 /images/products/*.png 로 바꿨는데 DB 는 picsum 유지</li>
+ * </ul>
+ * 그래서 매 기동마다 자연 키(매장명, 제품명, 제품+컬러+사이즈, SKU+매장, 전화번호)로 찾아
+ * 있으면 갱신하고 없으면 생성한다. ID 는 유지되고, 고객이 만든 데이터(장바구니 추가분,
+ * 상담 결과, 동의 기록)는 건드리지 않는다.
  *
  * MCM 실제 판매 제품 12개 기준 데모 데이터셋 ("최종 선정 12개 가방" 기획안 그대로 반영).
  * 전부 SKU 1(M Diamond 비세토스 레더 믹스 · 꼬냑)에서 출발한다 — 청담 본점 품절 공통 기준 제품.
@@ -41,16 +52,11 @@ public class DataLoader implements CommandLineRunner {
     @Override
     @Transactional
     public void run(String... args) {
-        if (customerRepository.count() > 0) {
-            refreshInventoryCheckedAt();
-            return; // 이미 시딩된 경우 재실행하지 않음
-        }
-
         LocalDateTime now = LocalDateTime.now();
 
         // ---------- 매장 ----------
-        Store cheongdam = storeRepository.save(Store.builder().name("청담 본점").build());
-        Store gangnam = storeRepository.save(Store.builder().name("강남 신세계점").build());
+        Store cheongdam = upsertStore("청담 본점");
+        Store gangnam = upsertStore("강남 신세계점");
 
         // ---------- 1. 원제품 (공통 미보유 기준 제품) ----------
         Sku s1 = createSku(cheongdam, gangnam,
@@ -118,7 +124,7 @@ public class DataLoader implements CommandLineRunner {
                 "/images/products/bag7.png",
                 "오렌지에이드", "S", "그레인 가죽", 460,
                 "지퍼 클로저 + 심플 수납", "토트/크로스바디 겸용", false, null,
-                Attr.of("오렌지", "웜", "가죽", "높음", "낮음", "정면하단", "낮음", "각진", "하드",
+                Attr.of("오렌지", "웜", "가죽", "높음", "낮음", "정면하단", "낮음", "사각", "하드",
                         "스몰", "벨트스트랩", "골드", "데일리", "보통", "지퍼", "심플", "일반"),
                 true, true, false);
 
@@ -158,7 +164,7 @@ public class DataLoader implements CommandLineRunner {
                 "/images/products/bag11.png",
                 "꼬냑", "미니", "비세토스 모노그램 캔버스 + 가죽 트림", 220,
                 "플립형 심플 수납", "크로스바디", false, null,
-                Attr.of("꼬냑", "웜", "캔버스", "낮음", "높음", "정면중앙", "높음", "각진", "소프트",
+                Attr.of("꼬냑", "웜", "캔버스", "낮음", "높음", "정면중앙", "높음", "사각", "소프트",
                         "미니", "체인스트랩", "골드", "이브닝", "가벼움", "플립", "심플", "일반"),
                 true, true, false);
 
@@ -173,44 +179,49 @@ public class DataLoader implements CommandLineRunner {
                 false, true, false); // 재고 없음 (명확한 비적합 후보)
 
         // ---------- 고객 ----------
-        Customer kim = customerRepository.save(Customer.builder()
-                .name("김세계").phoneNumber("010-1234-5678").build());
-        Customer lee = customerRepository.save(Customer.builder()
-                .name("이수현").phoneNumber("010-9876-5432").build());
+        // 고객은 전화번호를 자연 키로 upsert 한다. 신규로 만들어진 경우에만 아래 동의/장바구니
+        // 초기 데이터를 넣어, 재기동할 때마다 같은 장바구니 항목이 다시 쌓이지 않게 한다.
+        boolean kimIsNew = customerRepository.findByPhoneNumber("010-1234-5678").isEmpty();
+        Customer kim = upsertCustomer("김세계", "010-1234-5678");
+        boolean leeIsNew = customerRepository.findByPhoneNumber("010-9876-5432").isEmpty();
+        Customer lee = upsertCustomer("이수현", "010-9876-5432");
 
-        // ---------- 고객 동의 ----------
-        consentRecordRepository.save(ConsentRecord.builder()
-                .customer(kim).status(ConsentStatus.AGREE)
-                .scope("장바구니 조회, 구매 의도·상담 결과 저장, 고객 모바일 재확인")
-                .consentedAt(now)
-                .build());
+        if (kimIsNew) {
+            // ---------- 고객 동의 ----------
+            consentRecordRepository.save(ConsentRecord.builder()
+                    .customer(kim).status(ConsentStatus.AGREE)
+                    .scope("장바구니 조회, 구매 의도·상담 결과 저장, 고객 모바일 재확인")
+                    .consentedAt(now)
+                    .build());
+
+            // ---------- 장바구니: 세 페르소나가 공통으로 담는 원제품(SKU 1) ----------
+            cartItemRepository.save(CartItem.builder()
+                    .customer(kim).sku(s1).color(s1.getColor()).size(s1.getSize())
+                    .savedAt(now.minusMinutes(5)).build());
+        }
+
         // 이수현은 의도적으로 동의 기록을 남기지 않는다 -> "동의 필요" 차단 흐름 데모용.
-
-        // ---------- 장바구니: 세 페르소나가 공통으로 담는 원제품(SKU 1) ----------
-        cartItemRepository.save(CartItem.builder()
-                .customer(kim).sku(s1).color(s1.getColor()).size(s1.getSize())
-                .savedAt(now.minusMinutes(5)).build());
-
-        // 이수현 장바구니: 시그니처형 정답 SKU 로 보유 재고 케이스 데모 (동의 전이므로 GET /api/cart 는 403)
-        cartItemRepository.save(CartItem.builder()
-                .customer(lee).sku(s1).color(s1.getColor()).size(s1.getSize())
-                .savedAt(now.minusHours(1)).build());
+        if (leeIsNew) {
+            // 이수현 장바구니: 동의 전이므로 GET /api/cart 는 403
+            cartItemRepository.save(CartItem.builder()
+                    .customer(lee).sku(s1).color(s1.getColor()).size(s1.getSize())
+                    .savedAt(now.minusHours(1)).build());
+        }
     }
 
-    /**
-     * 이미 시딩된 DB 로 재기동할 때 재고 확인 시각을 현재로 동기화한다.
-     *
-     * checked_at 은 최초 시딩 때 한 번만 찍히는데 MySQL 은 영속이므로, 갱신하지 않으면 시딩 시점이
-     * 그대로 고정된다. inventory.freshness-hours(기본 12시간)를 넘긴 순간부터 DecisionEngine 의
-     * isReliable() 이 모든 행에 대해 false 를 반환해 4가지 결과가 전부 추가 상담으로 수렴하며,
-     * 재시작으로는 복구되지 않는다.
-     *
-     * 실제 매장에서도 시스템 기동 시 POS 재고를 한 번 동기화하므로 의미상으로도 동일하다.
-     * confirmed(확인 여부) 는 데이터가 가진 원래 값을 그대로 두고 시각만 갱신한다.
-     */
-    private void refreshInventoryCheckedAt() {
-        LocalDateTime now = LocalDateTime.now();
-        inventoryRepository.findAll().forEach(inventory -> inventory.setCheckedAt(now));
+    private Store upsertStore(String name) {
+        return storeRepository.findByName(name)
+                .orElseGet(() -> storeRepository.save(Store.builder().name(name).build()));
+    }
+
+    private Customer upsertCustomer(String name, String phoneNumber) {
+        return customerRepository.findByPhoneNumber(phoneNumber)
+                .map(existing -> {
+                    existing.setName(name);
+                    return existing;
+                })
+                .orElseGet(() -> customerRepository.save(
+                        Customer.builder().name(name).phoneNumber(phoneNumber).build()));
     }
 
     private Sku createSku(Store cheongdam, Store gangnam,
@@ -220,42 +231,63 @@ public class DataLoader implements CommandLineRunner {
                            boolean laptopCompatible, Integer laptopMaxInch,
                            Attr attr,
                            boolean inStockAtCheongdam, boolean confirmed, boolean inStockAtGangnam) {
-        Product product = productRepository.save(Product.builder()
-                .name(productName)
-                .imageUrl(imageUrl)
-                .category(category)
-                .build());
+        Product product = productRepository.findByName(productName)
+                .map(existing -> {
+                    existing.setImageUrl(imageUrl);
+                    existing.setCategory(category);
+                    return existing;
+                })
+                .orElseGet(() -> productRepository.save(Product.builder()
+                        .name(productName).imageUrl(imageUrl).category(category)
+                        .build()));
 
-        Sku sku = skuRepository.save(Sku.builder()
-                .product(product).color(color).size(size)
-                .material(materialText).weightGrams(weightGrams)
-                .storageStructure(storageStructure).wearStyle(wearStyle)
-                .laptopCompatible(laptopCompatible).laptopMaxInch(laptopMaxInch)
-                .build());
+        Sku sku = skuRepository.findByProductIdAndColorAndSize(product.getId(), color, size)
+                .orElseGet(() -> skuRepository.save(Sku.builder()
+                        .product(product).color(color).size(size)
+                        .build()));
+        sku.setMaterial(materialText);
+        sku.setWeightGrams(weightGrams);
+        sku.setStorageStructure(storageStructure);
+        sku.setWearStyle(wearStyle);
+        sku.setLaptopCompatible(laptopCompatible);
+        sku.setLaptopMaxInch(laptopMaxInch);
 
-        productAttributeRepository.save(ProductAttribute.builder()
-                .sku(sku)
-                .colorFamily(attr.colorFamily).colorTone(attr.colorTone).material(attr.material)
-                .glossLevel(attr.glossLevel).logoVisibility(attr.logoVisibility).logoPosition(attr.logoPosition)
-                .patternDensity(attr.patternDensity).silhouette(attr.silhouette).structure(attr.structure)
-                .sizeGrade(attr.sizeGrade).strapType(attr.strapType).hardwareColor(attr.hardwareColor)
-                .usageContext(attr.usageContext).weightGrade(attr.weightGrade).lockType(attr.lockType)
-                .internalStorageLevel(attr.internalStorageLevel).handleType(attr.handleType)
-                .build());
+        ProductAttribute attribute = productAttributeRepository.findBySkuId(sku.getId())
+                .orElseGet(() -> productAttributeRepository.save(
+                        ProductAttribute.builder().sku(sku).build()));
+        applyAttribute(attribute, attr);
 
         LocalDateTime now = LocalDateTime.now();
-        inventoryRepository.save(Inventory.builder()
-                .sku(sku).store(cheongdam)
-                .currentStoreInStock(inStockAtCheongdam).otherStoreInStock(inStockAtGangnam)
-                .restockPlanned(false).confirmed(confirmed).checkedAt(now)
-                .build());
-        inventoryRepository.save(Inventory.builder()
-                .sku(sku).store(gangnam)
-                .currentStoreInStock(inStockAtGangnam).otherStoreInStock(inStockAtCheongdam)
-                .restockPlanned(false).confirmed(confirmed).checkedAt(now)
-                .build());
+        upsertInventory(sku, cheongdam, inStockAtCheongdam, inStockAtGangnam, confirmed, now);
+        upsertInventory(sku, gangnam, inStockAtGangnam, inStockAtCheongdam, confirmed, now);
 
         return sku;
+    }
+
+    private void applyAttribute(ProductAttribute a, Attr attr) {
+        a.setColorFamily(attr.colorFamily); a.setColorTone(attr.colorTone); a.setMaterial(attr.material);
+        a.setGlossLevel(attr.glossLevel); a.setLogoVisibility(attr.logoVisibility);
+        a.setLogoPosition(attr.logoPosition); a.setPatternDensity(attr.patternDensity);
+        a.setSilhouette(attr.silhouette); a.setStructure(attr.structure); a.setSizeGrade(attr.sizeGrade);
+        a.setStrapType(attr.strapType); a.setHardwareColor(attr.hardwareColor);
+        a.setUsageContext(attr.usageContext); a.setWeightGrade(attr.weightGrade);
+        a.setLockType(attr.lockType); a.setInternalStorageLevel(attr.internalStorageLevel);
+        a.setHandleType(attr.handleType);
+    }
+
+    private void upsertInventory(Sku sku, Store store, boolean currentStoreInStock,
+                                  boolean otherStoreInStock, boolean confirmed, LocalDateTime now) {
+        Inventory inventory = inventoryRepository.findBySkuIdAndStoreId(sku.getId(), store.getId())
+                .orElseGet(() -> inventoryRepository.save(
+                        Inventory.builder().sku(sku).store(store)
+                                .currentStoreInStock(currentStoreInStock).otherStoreInStock(otherStoreInStock)
+                                .restockPlanned(false).confirmed(confirmed).checkedAt(now)
+                                .build()));
+        inventory.setCurrentStoreInStock(currentStoreInStock);
+        inventory.setOtherStoreInStock(otherStoreInStock);
+        inventory.setRestockPlanned(false);
+        inventory.setConfirmed(confirmed);
+        inventory.setCheckedAt(now);
     }
 
     /** ProductAttribute 16(+1) 개 필드를 인자 순서로 한 번에 받는 값 객체 (DataLoader 내부 전용). */
