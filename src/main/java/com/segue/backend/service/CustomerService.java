@@ -27,7 +27,8 @@ public class CustomerService {
     private final ConsentRecordRepository consentRecordRepository;
 
     public CustomerResponse lookupByPhoneNumber(String phoneNumber) {
-        Customer customer = customerRepository.findByPhoneNumber(phoneNumber)
+        String digits = phoneNumber == null ? "" : phoneNumber.replaceAll("[^0-9]", "");
+        Customer customer = customerRepository.findByPhoneNumberDigits(digits)
                 .orElseThrow(() -> new NotFoundException("일치하는 고객 정보를 찾을 수 없습니다. 회원 정보를 다시 확인해 주세요."));
         boolean hasConsented = hasConsented(customer.getId());
         return CustomerResponse.from(customer, hasConsented);
