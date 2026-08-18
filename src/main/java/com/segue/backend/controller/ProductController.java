@@ -2,6 +2,7 @@ package com.segue.backend.controller;
 
 import com.segue.backend.dto.response.ProductDetailResponse;
 import com.segue.backend.dto.response.ProductListItemResponse;
+import com.segue.backend.dto.response.ProductSearchResponse;
 import com.segue.backend.service.ProductService;
 import lombok.RequiredArgsConstructor;
 import org.springframework.web.bind.annotation.*;
@@ -24,5 +25,14 @@ public class ProductController {
     @GetMapping("/{productId}")
     public ProductDetailResponse getProductDetail(@PathVariable Long productId) {
         return productService.getProductDetail(productId);
+    }
+
+    /** Issue #5: CA 수동 제품 검색 (제품명 필수, 컬러/사이즈 선택) */
+    @GetMapping("/search")
+    public List<ProductSearchResponse> searchProducts(
+            @RequestParam String name,
+            @RequestParam(required = false) String color,
+            @RequestParam(required = false) String size) {
+        return productService.searchProducts(name, color, size);
     }
 }
