@@ -28,7 +28,8 @@ CA가 입력한 고객의 자연어 발화를 분석해, 아래 JSON 스키마�
 - logoVisibility: 높음 | 중간 | 낮음
 - logoPosition: 정면중앙 | 정면하단 | 스트랩
 - patternDensity: 높음 | 중간 | 낮음
-- silhouette: 각진 | 라운드 | 사각
+- silhouette: 라운드 | 사각
+  (고객이 "각진", "직사각형", "네모난" 처럼 말해도 모두 사각 으로 매핑합니다. 각진 은 사용하지 않습니다.)
 - structure: 하드 | 소프트
 - sizeGrade: 미니 | 스몰 | 미디움 | 라지
 - strapType: 체인스트랩 | 패브릭스트랩 | 패브릭+레더콤보 | 벨트스트랩
@@ -65,7 +66,7 @@ physicalCheckAttributes 에 넣는 값도 반드시 위 key 이름(colorFamily, 
   "purpose": "",
   "essentialConditions": {
     "logoPosition": "정면중앙",
-    "silhouette": "각진"
+    "silhouette": "사각"
   },
   "preferredConditions": {},
   "negotiableConditions": {},
