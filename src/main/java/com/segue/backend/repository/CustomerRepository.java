@@ -18,4 +18,7 @@ public interface CustomerRepository extends JpaRepository<Customer, Long> {
     @Query("select c from Customer c "
             + "where function('replace', function('replace', c.phoneNumber, '-', ''), ' ', '') = :digits")
     Optional<Customer> findByPhoneNumberDigits(@Param("digits") String digits);
+
+    /** 로그인용. 이메일은 항상 소문자로 정규화해 저장·조회한다. */
+    Optional<Customer> findByEmail(String email);
 }
