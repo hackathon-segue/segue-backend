@@ -260,21 +260,24 @@ CA가 고객에게 데이터 이용 목적·범위를 안내한 뒤 동의/비�
 
 요청:
 ```json
-{ "storeId": 1, "skuId": 1, "utterance": "손잡이의 다이아몬드 컷아웃 디자인과 비세토스 캔버스 소재는 꼭 그대로였으면 해요. 오늘 당장 필요하진 않아요" }
+{ "storeId": 1, "skuId": 1, "utterance": "이 꼬냑 비세토스 컬러랑 다이아몬드 모양 핸들이 그대로인 제품이어야 해요. 색이나 소재가 다른 건 원하지 않아요. 오늘 아니어도 되니까, 다른 매장에 있으면 거기서 받아보고 싶어요" }
 ```
+
+> 위 발화는 **페르소나 4(오리지널 고수형)** 의 것이다. 데모·테스트 발화는 SCHEMA.md 의 페르소나 1~5 를
+> 단일 기준으로 사용한다 (이슈 #33).
 
 응답 `200`:
 ```json
 {
   "structuredIntent": {
     "purpose": "",
-    "essentialConditions": { "handleType": "다이아몬드컷아웃", "material": "캔버스" },
+    "essentialConditions": { "colorFamily": "꼬냑", "handleType": "다이아몬드컷아웃" },
     "preferredConditions": {},
     "negotiableConditions": {},
     "purchaseUrgency": "FLEXIBLE",
     "physicalCheckAttributes": [],
     "canWait": true,
-    "canVisitOtherStore": null,
+    "canVisitOtherStore": true,
     "needsFollowUp": false
   },
   "needsFollowUp": false
