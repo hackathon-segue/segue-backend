@@ -260,7 +260,7 @@ CA가 고객에게 데이터 이용 목적·범위를 안내한 뒤 동의/비�
 
 요청:
 ```json
-{ "storeId": 1, "skuId": 1, "utterance": "이 로고 위치와 각진 형태가 좋아요. 오늘 살 필요는 없어요" }
+{ "storeId": 1, "skuId": 1, "utterance": "손잡이의 다이아몬드 컷아웃 디자인과 비세토스 캔버스 소재는 꼭 그대로였으면 해요. 오늘 당장 필요하진 않아요" }
 ```
 
 응답 `200`:
@@ -268,19 +268,22 @@ CA가 고객에게 데이터 이용 목적·범위를 안내한 뒤 동의/비�
 {
   "structuredIntent": {
     "purpose": "",
-    "essentialConditions": { "logoPosition": "정면중앙", "silhouette": "사각" },
+    "essentialConditions": { "handleType": "다이아몬드컷아웃", "material": "캔버스" },
     "preferredConditions": {},
     "negotiableConditions": {},
     "purchaseUrgency": "FLEXIBLE",
     "physicalCheckAttributes": [],
     "canWait": true,
-    "canVisitOtherStore": true,
-    "needsFollowUp": false,
-    "followUpReason": ""
+    "canVisitOtherStore": null,
+    "needsFollowUp": false
   },
   "needsFollowUp": false
 }
 ```
+
+> `canWait` / `canVisitOtherStore` 는 고객이 **명시적으로 말한 경우에만** true/false 가 되고, 언급이 없으면
+> `null` 입니다. 위 예시는 "오늘 당장 필요하진 않다"는 대기 가능 신호만 있고 타 매장 방문 의사는 말하지
+> 않은 경우입니다. 프론트는 이 세 값(`true`/`false`/`null`)을 모두 처리해야 합니다.
 
 ### `StructuredIntentDto` 필드 설명 (이후 모든 단계에서 동일한 구조 사용)
 
