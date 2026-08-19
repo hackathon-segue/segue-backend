@@ -191,34 +191,57 @@ public class DataLoader implements CommandLineRunner {
                 false, true, false); // 재고 없음 (명확한 비적합 후보)
 
         // ---------- 고객 ----------
-        // 고객은 전화번호를 자연 키로 upsert 한다. 신규로 만들어진 경우에만 아래 동의/장바구니
-        // 초기 데이터를 넣어, 재기동할 때마다 같은 장바구니 항목이 다시 쌓이지 않게 한다.
+        // 고객은 전화번호를 자연 키로 upsert 한다. 장바구니 초기 데이터는 신규로 만들어진 경우에만
+        // 넣어, 재기동할 때마다 같은 항목이 다시 쌓이지 않게 한다.
         boolean kimIsNew = customerRepository.findByPhoneNumber("010-1234-5678").isEmpty();
         Customer kim = upsertCustomer("김세계", "010-1234-5678");
         boolean leeIsNew = customerRepository.findByPhoneNumber("010-9876-5432").isEmpty();
         Customer lee = upsertCustomer("이수현", "010-9876-5432");
 
-        if (kimIsNew) {
-            // ---------- 고객 동의 ----------
-            consentRecordRepository.save(ConsentRecord.builder()
-                    .customer(kim).status(ConsentStatus.AGREE)
-                    .scope("장바구니 조회, 구매 의도·상담 결과 저장, 고객 모바일 재확인")
-                    .consentedAt(now)
-                    .build());
+        // ---------- 고객 동의 ----------
+        // 동의 상태는 장바구니와 달리 매 기동마다 시드 상태로 되돌린다. 데모 진행이나 프론트
+        // 테스트 중에 동의 버튼을 누르면 상태가 바뀌는데, 되돌리는 방법이 수동 DB 조작뿐이면
+        // "동의 필요(403) 차단 흐름" 시연이 조용히 불가능해진다.
+        syncSeedConsent(kim, true, now);   // 김세계: 동의 완료 상태로 시작
+        syncSeedConsent(lee, false, now);  // 이수현: 동의 기록 없는 상태로 시작 (403 차단 흐름 데모용)
 
+        if (kimIsNew) {
             // ---------- 장바구니: 세 페르소나가 공통으로 담는 원제품(SKU 1) ----------
             cartItemRepository.save(CartItem.builder()
                     .customer(kim).sku(s1).color(s1.getColor()).size(s1.getSize())
                     .savedAt(now.minusMinutes(5)).build());
         }
 
-        // 이수현은 의도적으로 동의 기록을 남기지 않는다 -> "동의 필요" 차단 흐름 데모용.
         if (leeIsNew) {
             // 이수현 장바구니: 동의 전이므로 GET /api/cart 는 403
             cartItemRepository.save(CartItem.builder()
                     .customer(lee).sku(s1).color(s1.getColor()).size(s1.getSize())
                     .savedAt(now.minusHours(1)).build());
         }
+    }
+
+    /**
+     * 시드 계정의 동의 상태를 코드에 정의된 값으로 되돌린다.
+     *
+     * 회원가입으로 만들어진 고객은 대상이 아니다 (이 메서드는 시드 계정 2명에게만 호출된다).
+     * 시연 중 이수현에게 동의를 받은 뒤 재기동하면 초기 상태로 돌아가는데, 데모 전용 계정이라
+     * 반복 시연에 오히려 유리하다.
+     */
+    private void syncSeedConsent(Customer customer, boolean shouldAgree, LocalDateTime now) {
+        consentRecordRepository.findByCustomerId(customer.getId()).ifPresent(existing -> {
+            if (!shouldAgree) {
+                consentRecordRepository.delete(existing);
+            }
+        });
+        if (!shouldAgree) {
+            return;
+        }
+        ConsentRecord record = consentRecordRepository.findByCustomerId(customer.getId())
+                .orElseGet(() -> ConsentRecord.builder().customer(customer).build());
+        record.setStatus(ConsentStatus.AGREE);
+        record.setScope("장바구니 조회, 구매 의도·상담 결과 저장, 고객 모바일 재확인");
+        record.setConsentedAt(now);
+        consentRecordRepository.save(record);
     }
 
     private Store upsertStore(String name) {
