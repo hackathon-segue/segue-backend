@@ -62,6 +62,7 @@ public class DataLoader implements CommandLineRunner {
         Sku s1 = createSku(cheongdam, gangnam,
                 "M Diamond 비세토스 레더 믹스", "핸드백",
                 "/images/products/bag1.png",
+                1590000,
                 "꼬냑", "M", "비세토스 모노그램 캔버스 + 나파 송아지 가죽 트림", 480,
                 "지퍼 클로저 + 내부 포켓", "핸드백/크로스바디 겸용", false, null,
                 Attr.of("꼬냑", "웜", "캔버스", "낮음", "높음", "정면중앙", "높음", "사각", "하드",
@@ -72,6 +73,7 @@ public class DataLoader implements CommandLineRunner {
         createSku(cheongdam, gangnam,
                 "M Diamond 엠보스드 레더", "핸드백",
                 "/images/products/bag2.png",
+                1850000,
                 "블랙", "M", "엠보스드 레더", 470,
                 "지퍼 클로저 + 내부 포켓", "핸드백/크로스바디 겸용", false, null,
                 Attr.of("블랙", "쿨", "가죽", "중간", "낮음", "정면하단", "낮음", "사각", "하드",
@@ -82,6 +84,7 @@ public class DataLoader implements CommandLineRunner {
         createSku(cheongdam, gangnam,
                 "M New Liz 비세토스 쇼퍼", "쇼퍼백",
                 "/images/products/bag3.png",
+                1090000,
                 "꼬냑", "M", "비세토스 모노그램 캔버스 + 천연 가죽 트림", 520,
                 "탈착형 지퍼 파우치 포함, 오픈탑", "숄더", false, null,
                 Attr.of("꼬냑", "웜", "캔버스", "낮음", "높음", "정면중앙", "높음", "사각", "소프트",
@@ -92,6 +95,7 @@ public class DataLoader implements CommandLineRunner {
         createSku(cheongdam, gangnam,
                 "L Aren 비세토스 N/S 토트", "토트백",
                 "/images/products/bag4.png",
+                1390000,
                 "블랙", "L", "비세토스 모노그램 캔버스 + 가죽 트림", 780,
                 "16인치 노트북·태블릿 포켓 + 다수의 내부 포켓", "토트(손잡이 + 숄더스트랩)", true, 16,
                 Attr.of("블랙", "쿨", "캔버스", "낮음", "높음", "정면중앙", "높음", "사각", "하드",
@@ -102,6 +106,7 @@ public class DataLoader implements CommandLineRunner {
         createSku(cheongdam, gangnam,
                 "S 뮌헨 비세토스 토트", "토트백",
                 "/images/products/bag5.png",
+                1290000,
                 "꼬냑", "S", "비세토스 모노그램 캔버스 + 가죽 핸들", 430,
                 "지퍼 클로저 + 심플 수납", "토트/크로스바디 겸용", false, null,
                 Attr.of("꼬냑", "웜", "캔버스", "낮음", "높음", "정면중앙", "높음", "사각", "하드",
@@ -112,6 +117,7 @@ public class DataLoader implements CommandLineRunner {
         createSku(cheongdam, gangnam,
                 "미니 Diamond 카프 레더 숄더백", "숄더백",
                 "/images/products/bag6.png",
+                1050000,
                 "블랙", "미니", "카프 레더", 290,
                 "플랩형 단일 수납", "숄더", false, null,
                 Attr.of("블랙", "쿨", "가죽", "중간", "낮음", "정면하단", "낮음", "라운드", "소프트",
@@ -122,6 +128,7 @@ public class DataLoader implements CommandLineRunner {
         createSku(cheongdam, gangnam,
                 "S Milla 그레인 가죽 토트", "토트백",
                 "/images/products/bag7.png",
+                1690000,
                 "오렌지에이드", "S", "그레인 가죽", 460,
                 "지퍼 클로저 + 심플 수납", "토트/크로스바디 겸용", false, null,
                 Attr.of("오렌지", "웜", "가죽", "높음", "낮음", "정면하단", "낮음", "사각", "하드",
@@ -132,6 +139,7 @@ public class DataLoader implements CommandLineRunner {
         createSku(cheongdam, gangnam,
                 "S Aren 비세토스 듀오 호보", "크로스바디",
                 "/images/products/bag8.png",
+                1290000,
                 "블랙", "S", "비세토스 모노그램 캔버스 + 나파 가죽", 350,
                 "지퍼형 심플 수납", "크로스바디/숄더", false, null,
                 Attr.of("블랙", "쿨", "캔버스", "낮음", "중간", "정면중앙", "중간", "라운드", "소프트",
@@ -142,6 +150,7 @@ public class DataLoader implements CommandLineRunner {
         createSku(cheongdam, gangnam,
                 "M Stark 사이드 스터드 비세토스 백팩", "백팩",
                 "/images/products/bag9.png",
+                1890000,
                 "꼬냑", "M", "비세토스 모노그램 캔버스 + 가죽 트림", 650,
                 "지퍼형 메인 수납 + 13인치 노트북 슬리브", "백팩(양쪽 숄더)", true, 13,
                 Attr.of("꼬냑", "웜", "캔버스", "낮음", "높음", "정면중앙", "높음", "사각", "소프트",
@@ -152,6 +161,7 @@ public class DataLoader implements CommandLineRunner {
         createSku(cheongdam, gangnam,
                 "M Aren ECONYL 가죽 백팩", "백팩",
                 "/images/products/bag10.png",
+                1650000,
                 "그린", "M", "ECONYL 재생나일론 + 가죽 트림", 600,
                 "16인치 노트북 슬리브 + 다수 포켓", "백팩(양쪽 숄더)", true, 16,
                 Attr.of("그린", "쿨", "패브릭", "중간", "낮음", "정면하단", "낮음", "사각", "소프트",
@@ -162,6 +172,7 @@ public class DataLoader implements CommandLineRunner {
         createSku(cheongdam, gangnam,
                 "미니 Tracy 비세토스 레더 믹스 크로스바디", "크로스바디",
                 "/images/products/bag11.png",
+                1050000,
                 "꼬냑", "미니", "비세토스 모노그램 캔버스 + 가죽 트림", 220,
                 "플립형 심플 수납", "크로스바디", false, null,
                 Attr.of("꼬냑", "웜", "캔버스", "낮음", "높음", "정면중앙", "높음", "사각", "소프트",
@@ -172,6 +183,7 @@ public class DataLoader implements CommandLineRunner {
         createSku(cheongdam, gangnam,
                 "S Pina 비세토스 탬버린 백", "크로스바디",
                 "/images/products/bag12.png",
+                1690000,
                 "꼬냑", "S", "비세토스 모노그램 캔버스", 280,
                 "지퍼형 단일 수납", "크로스바디", false, null,
                 Attr.of("꼬냑", "웜", "캔버스", "낮음", "높음", "정면중앙", "높음", "라운드", "하드",
@@ -226,6 +238,7 @@ public class DataLoader implements CommandLineRunner {
 
     private Sku createSku(Store cheongdam, Store gangnam,
                            String productName, String category, String imageUrl,
+                           Integer price,
                            String color, String size, String materialText, Integer weightGrams,
                            String storageStructure, String wearStyle,
                            boolean laptopCompatible, Integer laptopMaxInch,
@@ -235,10 +248,11 @@ public class DataLoader implements CommandLineRunner {
                 .map(existing -> {
                     existing.setImageUrl(imageUrl);
                     existing.setCategory(category);
+                    existing.setPrice(price);
                     return existing;
                 })
                 .orElseGet(() -> productRepository.save(Product.builder()
-                        .name(productName).imageUrl(imageUrl).category(category)
+                        .name(productName).imageUrl(imageUrl).category(category).price(price)
                         .build()));
 
         Sku sku = skuRepository.findByProductIdAndColorAndSize(product.getId(), color, size)

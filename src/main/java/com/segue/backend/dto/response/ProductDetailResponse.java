@@ -17,6 +17,7 @@ public class ProductDetailResponse {
     private String name;
     private String imageUrl;
     private String category;
+    private Integer price;
     private List<SkuOptionResponse> options;
 
     public static ProductDetailResponse from(Product product, List<Sku> skus) {
@@ -25,6 +26,7 @@ public class ProductDetailResponse {
                 .name(product.getName())
                 .imageUrl(product.getImageUrl())
                 .category(product.getCategory())
+                .price(product.getPrice())
                 .options(skus.stream().map(SkuOptionResponse::from).toList())
                 .build();
     }
