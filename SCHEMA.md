@@ -189,6 +189,11 @@ customer (고객)     │     └── product_attribute (1:1, 매칭용 사전
 고객 1명당 행 1개만 유지한다 (반복 제출 시 마지막 의사로 덮어씀 — "동일 고객이 반복 제출하면 마지막
 의사만 적용" 요구사항). `hasConsented(customerId)` = 레코드가 존재하고 `status=AGREE`.
 
+> **시드 계정의 동의 상태는 매 기동마다 초기화된다.** 김세계는 `AGREE`, 이수현은 기록 없음으로
+> 되돌아간다. 데모나 프론트 테스트 중 동의 버튼을 누르면 상태가 바뀌는데, 되돌릴 방법이 수동 DB
+> 조작뿐이면 "동의 필요(403) 차단 흐름" 시연이 조용히 불가능해지기 때문이다. **회원가입으로 만들어진
+> 고객은 대상이 아니다.**
+
 **동의 게이트가 걸린 API**: `GET /api/cart`(CA의 회원 장바구니 조회), `POST /api/consultations/execute`
 (상담 결과의 고객 정보 저장), `GET /api/consultations/customers/{id}`(고객 모바일 재확인). 동의가 없으면
 403 `ConsentRequiredException` 을 반환한다.
