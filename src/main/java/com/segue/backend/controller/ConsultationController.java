@@ -5,9 +5,10 @@ import com.segue.backend.dto.response.*;
 import com.segue.backend.service.ConsultationService;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
-import org.springframework.data.domain.Page;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.web.bind.annotation.*;
+
+import java.util.List;
 
 /** F3~F8: Last Intent 상담 플로우 (태블릿 진행 + 고객 모바일 결과 조회) */
 @RestController
@@ -49,7 +50,7 @@ public class ConsultationController {
 
     /** F8: 고객 모바일에서 자신의 상담 결과 목록 조회 */
     @GetMapping("/customers/{customerId}")
-    public Page<ConsultationResultResponse> getResults(@PathVariable Long customerId,
+    public List<ConsultationResultResponse> getResults(@PathVariable Long customerId,
                                                        @RequestParam(defaultValue = "0") int page,
                                                        @RequestParam(defaultValue = "10") int size) {
         return consultationService.getResultsForCustomer(customerId, PageRequest.of(page, size));
