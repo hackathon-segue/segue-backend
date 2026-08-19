@@ -5,6 +5,7 @@ import com.segue.backend.domain.enums.ConsentStatus;
 import com.segue.backend.repository.*;
 import lombok.RequiredArgsConstructor;
 import org.springframework.boot.CommandLineRunner;
+import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Component;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -48,6 +49,10 @@ public class DataLoader implements CommandLineRunner {
     private final CustomerRepository customerRepository;
     private final CartItemRepository cartItemRepository;
     private final ConsentRecordRepository consentRecordRepository;
+    private final PasswordEncoder passwordEncoder;
+
+    /** 데모용 시드 계정 공통 비밀번호 (8자 이상 규칙 충족). 실제 배포 데이터가 아니다. */
+    private static final String SEED_PASSWORD = "segue1234";
 
     @Override
     @Transactional
@@ -194,9 +199,9 @@ public class DataLoader implements CommandLineRunner {
         // 고객은 전화번호를 자연 키로 upsert 한다. 신규로 만들어진 경우에만 아래 동의/장바구니
         // 초기 데이터를 넣어, 재기동할 때마다 같은 장바구니 항목이 다시 쌓이지 않게 한다.
         boolean kimIsNew = customerRepository.findByPhoneNumber("010-1234-5678").isEmpty();
-        Customer kim = upsertCustomer("김세계", "010-1234-5678");
+        Customer kim = upsertCustomer("김세계", "010-1234-5678", "kim@segue.test");
         boolean leeIsNew = customerRepository.findByPhoneNumber("010-9876-5432").isEmpty();
-        Customer lee = upsertCustomer("이수현", "010-9876-5432");
+        Customer lee = upsertCustomer("이수현", "010-9876-5432", "lee@segue.test");
 
         if (kimIsNew) {
             // ---------- 고객 동의 ----------
@@ -226,14 +231,20 @@ public class DataLoader implements CommandLineRunner {
                 .orElseGet(() -> storeRepository.save(Store.builder().name(name).build()));
     }
 
-    private Customer upsertCustomer(String name, String phoneNumber) {
-        return customerRepository.findByPhoneNumber(phoneNumber)
-                .map(existing -> {
-                    existing.setName(name);
-                    return existing;
-                })
+    /**
+     * 데모용 시드 계정. 이메일은 시드 정체성이므로 매 기동마다 동기화하고, 비밀번호는 값이
+     * 없을 때만 채운다 (프로필 편집으로 바꾼 비밀번호가 재기동 때 초기화되지 않도록).
+     */
+    private Customer upsertCustomer(String name, String phoneNumber, String email) {
+        Customer customer = customerRepository.findByPhoneNumber(phoneNumber)
                 .orElseGet(() -> customerRepository.save(
                         Customer.builder().name(name).phoneNumber(phoneNumber).build()));
+        customer.setName(name);
+        customer.setEmail(email);
+        if (customer.getPassword() == null) {
+            customer.setPassword(passwordEncoder.encode(SEED_PASSWORD));
+        }
+        return customer;
     }
 
     private Sku createSku(Store cheongdam, Store gangnam,

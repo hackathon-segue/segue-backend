@@ -126,8 +126,24 @@ customer (고객)     │     └── product_attribute (1:1, 매칭용 사전
 | 컬럼 | 타입 | 제약조건 | 설명 |
 |---|---|---|---|
 | id | BIGINT | PK, AUTO_INCREMENT | |
-| name | VARCHAR(100) | NOT NULL | |
+| name | VARCHAR(100) | NOT NULL | 성명 |
 | phone_number | VARCHAR(30) | NOT NULL, UNIQUE | F1 조회 키 |
+| email | VARCHAR(255) | UNIQUE | 로그인 아이디. 항상 소문자로 정규화해 저장 |
+| password | VARCHAR(100) | | BCrypt 해시(60자). 평문 저장·응답 노출 없음 |
+
+> **`email` / `password` 에 NOT NULL 을 걸지 않는 이유**: `ddl-auto=update` 로 기존 행이 있는 테이블에
+> 컬럼을 추가하기 때문이다. 컬럼 추가 시점에는 값이 없고, DataLoader 가 기동하면서 시드 계정에
+> 채워 넣는다. 값 존재 여부는 요청 DTO 검증(`@NotBlank`)과 서비스 계층에서 보장한다.
+>
+> **전화번호 중복 검사는 정규화 기준이다.** `010-1234-5678` 과 `01012345678` 은 같은 번호로 취급되어
+> 두 계정을 만들 수 없다(409). DB 의 UNIQUE 제약은 문자열 기준이므로 애플리케이션에서 한 번 더 막는다.
+>
+> **비밀번호는 어떤 응답에도 포함되지 않는다.** 단방향 해시라 복원이 불가능하므로, "내 계정" 화면의
+> 비밀번호 표시는 프론트가 고정 마스킹 문자열을 렌더링해야 한다.
+>
+> 데모용 시드 계정: `kim@segue.test`, `lee@segue.test` (비밀번호 `segue1234`). 이메일은 매 기동마다
+> 동기화하고 비밀번호는 값이 없을 때만 채우므로, 프로필 편집으로 바꾼 비밀번호가 재기동 때
+> 초기화되지 않는다.
 
 ## 7. cart_item (장바구니 항목)
 
@@ -175,8 +191,15 @@ customer (고객)     │     └── product_attribute (1:1, 매칭용 사전
 
 **동의 게이트가 걸린 API**: `GET /api/cart`(CA의 회원 장바구니 조회), `POST /api/consultations/execute`
 (상담 결과의 고객 정보 저장), `GET /api/consultations/customers/{id}`(고객 모바일 재확인). 동의가 없으면
-403 `ConsentRequiredException` 을 반환한다. `POST /api/cart`(고객 본인의 장바구니 담기)는 고객 자신의
-행위이므로 게이트 대상이 아니다.
+403 `ConsentRequiredException` 을 반환한다.
+
+**게이트 대상이 아닌 API**: `POST /api/cart`(고객 본인의 장바구니 담기), `GET /api/cart/mine`(고객 본인의
+쇼핑백 조회). 동의는 **CA 가 고객 데이터를 열람할 때 확인하는 절차**이므로 본인이 자기 데이터를 보는
+것은 대상이 아니다.
+
+> CA 경로(`GET /api/cart`)와 본인 경로(`GET /api/cart/mine`)를 **엔드포인트로 분리**했다. 파라미터
+> 하나로 분기하면 CA 쪽에서 그 값을 빼먹었을 때 게이트가 조용히 우회되므로, 경로를 나눠 실수로
+> 우회되는 경우를 없앴다.
 
 ---
 

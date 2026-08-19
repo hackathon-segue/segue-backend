@@ -64,6 +64,21 @@ public class CartService {
         customerService.getById(customerId); // 존재 검증
         // 기능명세서 5번: CA의 회원 장바구니 조회는 고객 동의가 확인된 경우에만 허용한다.
         customerService.requireConsent(customerId);
+        return loadCart(customerId, storeId);
+    }
+
+    /**
+     * 고객 본인의 쇼핑백 조회. 동의 게이트를 적용하지 않는다.
+     * 동의는 CA 가 고객 데이터를 열람할 때 확인하는 절차이므로, 본인이 자기 장바구니를 보는 것은
+     * 대상이 아니다 (POST /api/cart 담기도 같은 이유로 게이트 대상이 아니다).
+     */
+    @Transactional(readOnly = true)
+    public List<CartItemResponse> getOwnCart(Long customerId, Long storeId) {
+        customerService.getById(customerId); // 존재 검증
+        return loadCart(customerId, storeId);
+    }
+
+    private List<CartItemResponse> loadCart(Long customerId, Long storeId) {
         return cartItemRepository.findByCustomerIdOrderBySavedAtDesc(customerId).stream()
                 .map(item -> toResponse(item, storeId))
                 .toList();

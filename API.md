@@ -9,7 +9,9 @@ Base URL (로컬): `http://localhost:8080`
 ```
 - 404: 리소스 없음 (예: 고객/SKU 조회 실패)
 - 400: 요청 값 검증 실패 (Bean Validation)
+- 401: 로그인 실패 / 현재 비밀번호 불일치
 - 403: 고객 동의가 필요함 (기능명세서 5번, 아래 "동의 관리" 참고)
+- 409: 이메일·전화번호 중복
 - 502: AI(OpenAI) 호출 실패
 
 ### 400 Bad Request — Bean Validation 실패 예시
@@ -24,8 +26,8 @@ Base URL (로컬): `http://localhost:8080`
 
 ## 전체 플로우 순서 (프론트 구현 가이드)
 
-0. **고객 모바일**: `GET /api/products` 로 제품 목록 브라우징 → `GET /api/products/{id}` 로 제품 상세(컬러·사이즈 옵션) 확인
-1. **고객 모바일**: `POST /api/cart` 로 컬러/사이즈 선택 후 담기
+0. **고객 모바일**: `POST /api/customers/signup` 또는 `POST /api/customers/login` (응답의 `id` 를 `customerId` 로 보관) → `GET /api/products` 로 제품 목록 브라우징 → `GET /api/products/{id}` 로 제품 상세(컬러·사이즈 옵션) 확인
+1. **고객 모바일**: `POST /api/cart` 로 컬러/사이즈 선택 후 담기 (본인 쇼핑백 확인은 `GET /api/cart/mine`)
 2. **태블릿**: `GET /api/customers/lookup` 로 고객 조회
 3. 응답의 `hasConsented` 가 `false` 면 데이터 이용 동의 화면을 먼저 보여주고 `POST /api/customers/{id}/consent` 로 기록
 4. `GET /api/cart` 로 장바구니+재고 확인 (동의 안 된 고객이면 403)
@@ -179,6 +181,83 @@ CA가 고객에게 데이터 이용 목적·범위를 안내한 뒤 동의/비�
 
 ---
 
+## 1-2. 고객 회원가입 / 로그인 / 프로필 (고객 모바일)
+
+세션·토큰을 발급하지 않는다. 로그인 응답의 `id` 를 프론트가 보관해 이후 요청의 `customerId` 로 사용한다.
+새로고침하면 사라지므로 `localStorage` 등에 저장하는 것을 권한다.
+
+> **비밀번호는 어떤 응답에도 포함되지 않는다.** 단방향 해시(BCrypt)로 저장해 복원이 불가능하다.
+> "내 계정" 화면의 비밀번호 표시는 프론트에서 고정 마스킹 문자열(`••••••••`)을 렌더링해야 한다.
+
+데모용 테스트 계정:
+
+| 이메일 | 비밀번호 | 고객 |
+|---|---|---|
+| `kim@segue.test` | `segue1234` | 김세계 (동의 완료, 장바구니 있음) |
+| `lee@segue.test` | `segue1234` | 이수현 (동의 흐름 데모용) |
+
+### `POST /api/customers/signup`
+
+요청:
+```json
+{ "name": "박도윤", "email": "park@example.com", "password": "segue1234", "phoneNumber": "010-5555-6666" }
+```
+- `phoneNumber` **필수**. CA 가 태블릿에서 고객을 조회하는 유일한 키(F1)이므로, 없으면 상담 플로우를 시작할 수 없다.
+- `password` 는 **8자 이상**.
+- `email` 은 대소문자를 구분하지 않는다 (소문자로 정규화해 저장).
+
+응답 `201`:
+```json
+{ "id": 3, "name": "박도윤", "phoneNumber": "010-5555-6666", "email": "park@example.com", "hasConsented": false }
+```
+가입 직후 `hasConsented` 는 항상 `false` 다. 데이터 이용 동의는 매장에서 CA 가 받는다 (기능명세서 5번).
+
+응답 `409`: `{ "message": "이미 사용 중인 이메일 주소입니다." }` 또는 `{ "message": "이미 사용 중인 전화번호입니다." }`
+
+> 전화번호 중복은 **정규화 기준**이다. `010-1234-5678` 이 이미 있으면 `01012345678` 로도 가입할 수 없다.
+
+### `POST /api/customers/login`
+
+요청:
+```json
+{ "email": "kim@segue.test", "password": "segue1234" }
+```
+응답 `200`: 위 signup 응답과 동일한 형태.
+
+응답 `401`:
+```json
+{ "message": "이메일 또는 비밀번호가 일치하지 않습니다." }
+```
+> **실패 사유를 구분하지 않는다.** "없는 이메일"과 "틀린 비밀번호"를 나누면 특정 이메일의 가입 여부를
+> 확인할 수 있게 되므로 동일한 문구를 반환한다. 화면에도 이 한 문구만 표시하면 된다.
+
+### `PATCH /api/customers/{customerId}` — 프로필 편집
+
+요청 (세 필드 모두 필수):
+```json
+{ "name": "박도윤", "email": "park2@example.com", "phoneNumber": "010-5555-9999" }
+```
+응답 `200`: 갱신된 고객 정보.
+응답 `409`: 다른 고객이 이미 쓰는 이메일·전화번호. 본인의 기존 값을 그대로 보내는 것은 허용된다.
+
+### `PATCH /api/customers/{customerId}/password` — 비밀번호 변경
+
+요청:
+```json
+{ "currentPassword": "segue1234", "newPassword": "newpass1234" }
+```
+- `newPassword` 는 **8자 이상**.
+
+응답 `200`: 갱신된 고객 정보 (비밀번호는 포함되지 않음).
+응답 `401`: `{ "message": "현재 비밀번호가 일치하지 않습니다." }`
+
+### 주문 내역
+
+주문 기능은 구현하지 않는다 (CLAUDE.md P2 결제/배송 연동). "내 계정" 화면의 주문 내역은
+**빈 상태 고정**으로 표시한다 ("이 계정에 대한 주문 기록이 없습니다").
+
+---
+
 ## 2. 장바구니 저장 (F0)
 
 ### `POST /api/cart`
@@ -251,6 +330,24 @@ CA가 고객에게 데이터 이용 목적·범위를 안내한 뒤 동의/비�
 ]
 ```
 - `actionButtonLabel` 이 `"Last Intent 시작"` 인 항목이 여러 개면, 프론트는 전부 목록으로 노출하고 **하나씩 순서대로** Last Intent 플로우(아래 4-8)를 진행한다. 한 SKU가 완료되면 목록에서 다음 SKU로 넘어가거나 CA가 수동 선택.
+
+---
+
+## 3-1. 고객 본인 쇼핑백 조회
+
+### `GET /api/cart/mine?customerId={customerId}&storeId={storeId}`
+
+응답 형태는 아래 `GET /api/cart` 와 동일하다. **차이는 동의 게이트뿐이다.**
+
+| 엔드포인트 | 용도 | 동의 게이트 |
+|---|---|---|
+| `GET /api/cart` | CA 가 태블릿에서 고객 장바구니 조회 (F2) | **있음** (없으면 403) |
+| `GET /api/cart/mine` | 고객이 자기 쇼핑백 조회 | 없음 |
+
+동의는 CA 가 고객 데이터를 열람할 때 확인하는 절차이므로, 고객 본인이 자기 쇼핑백을 보는 것은
+대상이 아니다. 고객 모바일에서는 `/mine` 을 사용해야 하며, `/api/cart` 를 쓰면 동의 전 고객에게 403 이 뜬다.
+
+`storeId` 는 선택이다. 고객 모바일에는 매장 문맥이 없으므로 생략하면 재고 필드가 전부 `false` 로 내려간다.
 
 ---
 
