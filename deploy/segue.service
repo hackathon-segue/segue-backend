@@ -1,0 +1,26 @@
+# Segue 백엔드 systemd 서비스
+#
+# 설치 위치: /etc/systemd/system/segue.service
+# 적용:
+#   systemctl daemon-reload
+#   systemctl enable segue
+#   systemctl start segue
+
+[Unit]
+Description=Segue Backend
+After=network.target mysql.service
+
+[Service]
+Type=simple
+User=root
+# .env 를 이 디렉터리에서 읽으므로 반드시 지정해야 한다.
+WorkingDirectory=/opt/segue-backend
+# prod 프로필을 여기에 박아두어 실행할 때마다 붙이는 것을 잊지 않도록 한다.
+ExecStart=/usr/bin/java -jar /opt/segue-backend/target/segue-backend-0.0.1-SNAPSHOT.jar --spring.profiles.active=prod
+Restart=always
+RestartSec=10
+StandardOutput=append:/var/log/segue.log
+StandardError=append:/var/log/segue.log
+
+[Install]
+WantedBy=multi-user.target
