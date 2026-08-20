@@ -289,9 +289,14 @@ public class DataLoader implements CommandLineRunner {
                         .name(productName).imageUrl(imageUrl).category(category).price(price)
                         .build()));
 
+        // NOT NULL 컬럼(product, color, size, laptop_compatible)은 반드시 생성 시점에 채운다.
+        // 나머지 값은 아래에서 setter 로 채우지만, laptopCompatible 을 빼고 save 하면 INSERT 가
+        // laptop_compatible=null 로 나가 제약 위반으로 실패한다. 기존 SKU 가 이미 있는 DB 에서는
+        // 이 분기를 타지 않아 드러나지 않고, 빈 DB 로 처음 기동할 때만 터진다.
         Sku sku = skuRepository.findByProductIdAndColorAndSize(product.getId(), color, size)
                 .orElseGet(() -> skuRepository.save(Sku.builder()
                         .product(product).color(color).size(size)
+                        .laptopCompatible(laptopCompatible)
                         .build()));
         sku.setMaterial(materialText);
         sku.setWeightGrams(weightGrams);
