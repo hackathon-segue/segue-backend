@@ -72,6 +72,7 @@ public class CustomerService {
     @Transactional
     public CustomerResponse updateProfile(Long customerId, ProfileUpdateRequest request) {
         Customer customer = getById(customerId);
+        requireCurrentPassword(customer, request.getCurrentPassword());
         String email = normalizeEmail(request.getEmail());
         requireEmailAvailable(email, customerId);
         requirePhoneNumberAvailable(request.getPhoneNumber(), customerId);
@@ -86,12 +87,22 @@ public class CustomerService {
     @Transactional
     public CustomerResponse changePassword(Long customerId, PasswordChangeRequest request) {
         Customer customer = getById(customerId);
-        if (customer.getPassword() == null
-                || !passwordEncoder.matches(request.getCurrentPassword(), customer.getPassword())) {
-            throw new UnauthorizedException("현재 비밀번호가 일치하지 않습니다.");
-        }
+        requireCurrentPassword(customer, request.getCurrentPassword());
         customer.setPassword(passwordEncoder.encode(request.getNewPassword()));
         return CustomerResponse.from(customer, hasConsented(customerId));
+    }
+
+    /**
+     * 계정 정보를 바꾸기 전에 요청자가 주인인지 확인한다.
+     *
+     * 토큰 기반 인가가 없어 customerId 를 요청에 담아 보내는 구조이므로, 이 확인이 없으면
+     * 아무나 남의 계정 정보를 수정할 수 있다. 조회 경로는 MVP 범위상 열려 있지만 변경 경로는 막는다.
+     */
+    private void requireCurrentPassword(Customer customer, String currentPassword) {
+        if (customer.getPassword() == null
+                || !passwordEncoder.matches(currentPassword, customer.getPassword())) {
+            throw new UnauthorizedException("현재 비밀번호가 일치하지 않습니다.");
+        }
     }
 
     private String normalizeEmail(String email) {
