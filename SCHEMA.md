@@ -39,6 +39,9 @@ customer (고객)     │     └── product_attribute (1:1, 매칭용 사전
 | name | VARCHAR(200) | NOT NULL | 제품명 |
 | image_url | VARCHAR(500) | | 제품 이미지 URL |
 | category | VARCHAR(100) | | 카테고리 (백팩/토트백 등) |
+| price | INT | | 판매가(원). 표시용이며 매칭 판단에는 쓰지 않는다 |
+
+> `price` 는 `GET /api/products/{id}`(상세)에만 실려 나가고 목록 응답에는 포함되지 않는다.
 
 ## 3. sku (SKU)
 
@@ -53,8 +56,14 @@ customer (고객)     │     └── product_attribute (1:1, 매칭용 사전
 | storage_structure | VARCHAR(200) | | 수납 구조 |
 | wear_style | VARCHAR(100) | | 착용 방식 |
 | laptop_compatible | BOOLEAN | NOT NULL | 노트북 수납 여부 |
+| laptop_max_inch | INT | NULL | 수납 가능한 최대 노트북 인치. `laptop_compatible=false` 면 NULL |
 
 권장 유니크 제약: `(product_id, color, size)` — 같은 제품의 컬러·사이즈 조합은 SKU 1개로 유일해야 함 (F0 저장 시 이 조합으로 SKU 를 찾음).
+
+> **`laptop_max_inch` 는 `product_attribute` 가 아니라 `sku` 에 있다.** 같은 제품이라도 사이즈에 따라
+> 수납 가능한 인치가 달라질 수 있어 SKU 단위 값이기 때문이다. `DecisionEngine` 은 이 컬럼을 두 곳에서
+> 읽는다 — 필수 조건 `laptopMaxInch` 의 직접 비교, 그리고 동점 처리 기준 ③(필수 조건의 여유).
+> 페르소나 3 이 SKU 9(13인치)가 아니라 SKU 4(16인치)로 가는 근거가 이 값이다.
 
 ## 4. product_attribute (사전 입력 속성 — 매칭용)
 
@@ -78,12 +87,19 @@ customer (고객)     │     └── product_attribute (1:1, 매칭용 사전
 | weight_grade | VARCHAR(50) | | 무게 등급 |
 | lock_type | VARCHAR(100) | | 잠금 방식 |
 | internal_storage_level | VARCHAR(50) | | 내부 수납 수준 |
+| handle_type | VARCHAR(50) | | 핸들 디자인 (`다이아몬드컷아웃` \| `일반`) |
 
-> 이 16개 컬럼의 **값 어휘(vocabulary)** 는 `segue-backend/src/main/resources/prompts/intent.txt` 에
+> `handle_type` 은 원제품(SKU 1)과 SKU 2 만 `다이아몬드컷아웃` 이고 나머지 10개는 전부 `일반` 이다.
+> 페르소나 1(디자인 유지형)과 페르소나 4(오리지널 고수형)의 결과를 가르는 컬럼이라, 값을 바꾸면
+> 두 페르소나의 시연 결과가 함께 달라진다.
+
+> 이 17개 컬럼의 **값 어휘(vocabulary)** 는 `segue-backend/src/main/resources/prompts/intent.txt` 에
 > AI 프롬프트로 그대로 명시되어 있다. AI가 구조화하는 `essentialConditions` / `preferredConditions` 의
 > key-value 는 반드시 이 어휘 안에서만 나오도록 프롬프트로 강제하며, 그래야 규칙 기반 엔진이
-> 문자열 비교만으로 정확히 매칭할 수 있다. 어휘를 변경하면 intent.txt / followup.txt / card.txt 와
-> DataLoader 더미 데이터를 함께 갱신해야 한다.
+> 문자열 비교만으로 정확히 매칭할 수 있다. 어휘를 변경하면 intent.txt / followup.txt / card.txt,
+> DataLoader 더미 데이터, 그리고 **API.md 의 "속성 어휘" 표**를 함께 갱신해야 한다. 프론트의 조건
+> 확인·수정 화면이 그 표를 기준으로 라벨과 선택지를 만들기 때문에, 표만 뒤처지면 화면에 key 가
+> 영문 그대로 노출되거나 수정 화면의 선택지가 비어 보인다.
 
 ## 5. inventory (재고)
 

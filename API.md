@@ -59,6 +59,8 @@ CORS는 환경별로 다르다. 개발은 프론트 개발 서버 포트가 매�
   { "id": 2, "name": "MCM 크로스바디 백 스몰", "imageUrl": "https://...", "category": "크로스바디" }
 ]
 ```
+> **목록 응답에는 `price` 가 없다.** 가격은 아래 상세 조회에만 포함되므로, 목록 화면에 가격을
+> 표시하려면 제품별로 `GET /api/products/{id}` 를 한 번 더 호출해야 한다.
 
 ### `GET /api/products/{productId}`
 
@@ -71,6 +73,7 @@ CORS는 환경별로 다르다. 개발은 프론트 개발 서버 포트가 매�
   "name": "MCM 백팩 미디움",
   "imageUrl": "https://...",
   "category": "백팩",
+  "price": 1590000,
   "options": [
     {
       "skuId": 1,
@@ -236,11 +239,21 @@ CA가 고객에게 데이터 이용 목적·범위를 안내한 뒤 동의/비�
 
 ### `PATCH /api/customers/{customerId}` — 프로필 편집
 
-요청 (세 필드 모두 필수):
+요청 (네 필드 모두 필수):
 ```json
-{ "name": "박도윤", "email": "park2@example.com", "phoneNumber": "010-5555-9999" }
+{
+  "name": "박도윤",
+  "email": "park2@example.com",
+  "phoneNumber": "010-5555-9999",
+  "currentPassword": "segue1234"
+}
 ```
+> **`currentPassword` 는 본인 확인용이며 비밀번호를 바꾸는 값이 아니다.** 토큰 기반 인가가 없어
+> `customerId` 를 요청에 담아 보내는 구조라, 이 확인이 없으면 `customerId` 만 바꿔 보내는 것으로
+> 남의 계정 정보를 수정할 수 있다. 비밀번호 변경은 아래 별도 엔드포인트를 쓴다.
+
 응답 `200`: 갱신된 고객 정보.
+응답 `401`: `{ "message": "현재 비밀번호가 일치하지 않습니다." }`
 응답 `409`: 다른 고객이 이미 쓰는 이메일·전화번호. 본인의 기존 값을 그대로 보내는 것은 허용된다.
 
 ### `PATCH /api/customers/{customerId}/password` — 비밀번호 변경
@@ -407,7 +420,7 @@ CA가 고객에게 데이터 이용 목적·범위를 안내한 뒤 동의/비�
 
 | key | 가능한 value |
 |---|---|
-| colorFamily | 블랙 \| 브라운 \| 베이지 |
+| colorFamily | 블랙 \| 브라운 \| 베이지 \| 꼬냑 \| 오렌지 \| 그린 |
 | colorTone | 웜 \| 쿨 \| 뉴트럴 |
 | material | 가죽 \| 캔버스 \| 패브릭 |
 | glossLevel | 높음 \| 중간 \| 낮음 |
@@ -423,7 +436,17 @@ CA가 고객에게 데이터 이용 목적·범위를 안내한 뒤 동의/비�
 | weightGrade | 가벼움 \| 보통 \| 무거움 |
 | lockType | 지퍼 \| 플립 \| 마그네틱 |
 | internalStorageLevel | 심플 \| 구획많음 |
+| handleType | 다이아몬드컷아웃 \| 일반 |
 | laptopCompatible | `"true"` \| `"false"` (문자열) |
+| laptopMaxInch | `"13"` \| `"16"` (문자열) |
+
+> **`silhouette` 에 `각진` 은 없다.** 고객이 "각진", "직사각형", "네모난" 처럼 말해도 AI 는 전부
+> `사각` 으로 매핑한다. 프론트 선택지에도 `각진` 을 넣지 않는다.
+>
+> **이 표는 `prompts/intent.txt` 의 어휘 목록과 1:1 로 같아야 한다.** 프론트의 조건 확인·수정
+> 화면이 이 표를 기준으로 라벨과 선택지를 만들기 때문에, 여기 없는 key 는 화면에 영문 그대로
+> 노출되고 여기 없는 value 는 수정 화면에서 빈 선택지로 뜬다. 어휘를 바꿀 때는 intent.txt,
+> 이 표, SCHEMA.md 의 `product_attribute` 표를 함께 고쳐야 한다.
 
 ---
 
