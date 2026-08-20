@@ -1,7 +1,10 @@
 # API.md — Segue Backend API 명세
 
 Base URL (로컬): `http://localhost:8080`
-모든 요청/응답은 `application/json`. CORS는 `/api/**` 전체에 대해 모든 origin 허용(`CorsConfig`).
+모든 요청/응답은 `application/json`.
+
+CORS는 환경별로 다르다. 개발은 프론트 개발 서버 포트가 매번 바뀌므로 모든 origin 을 허용하고,
+운영(`prod` 프로필)은 `application-prod.properties` 의 `cors.allowed-origins` 에 적힌 주소만 허용한다.
 
 에러 응답 공통 포맷:
 ```json
