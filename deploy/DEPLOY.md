@@ -5,17 +5,20 @@
 ## 구성
 
 ```
+segue.asia (가비아 도메인)
+        │
 가비아 클라우드 서버 1대 (2vCore / 4GB / 100GB)
-├─ nginx        :80    프론트 정적 파일 + /api, /images 를 백엔드로 전달
+├─ nginx        :443   HTTPS. 프론트 정적 파일 + /api, /images 를 백엔드로 전달
+├─ nginx        :80    HTTPS 로 301 리다이렉트만 담당
 ├─ Spring Boot  :8080  백엔드 (외부에 노출하지 않음)
 └─ MySQL        :3306  DB (외부에 노출하지 않음)
 ```
 
-주소가 하나로 통일되므로 **CORS 가 발생하지 않는다.** 프론트는 `baseUrl` 없이 `/api/...` 상대
-경로로 호출하면 된다.
+프론트와 백엔드가 **같은 주소에서 서빙되므로 CORS 도, 혼합 콘텐츠(HTTPS 페이지에서 HTTP API
+호출) 문제도 발생하지 않는다.**
 
-보안그룹(방화벽)에서 **80(HTTP)과 22(SSH)만 연다.** 8080 과 3306 은 서버 내부 통신이므로 열지
-않는다. 열면 백엔드와 DB 가 그대로 인터넷에 노출된다.
+보안그룹(방화벽)에서 **80(HTTP)·443(HTTPS)·22(SSH)만 연다.** 8080 과 3306 은 서버 내부 통신이므로
+열지 않는다. 열면 백엔드와 DB 가 그대로 인터넷에 노출된다.
 
 ---
 
@@ -104,26 +107,76 @@ nginx -t && systemctl reload nginx
 
 `nginx -t` 가 `syntax is ok` / `test is successful` 를 내야 한다.
 
+## 6-1. HTTPS (Let's Encrypt)
+
+먼저 도메인의 DNS A 레코드가 서버 IP 를 가리키고 있어야 하고, 방화벽에 **443 이 열려 있어야**
+한다. 둘 중 하나라도 안 되어 있으면 certbot 의 도메인 소유 확인이 실패한다.
+
+```bash
+apt install -y certbot python3-certbot-nginx
+certbot --nginx -d segue.asia -d www.segue.asia --redirect --agree-tos -m <이메일>
+```
+
+`--redirect` 가 HTTP 로 들어온 요청을 HTTPS 로 301 시키는 설정까지 넣어 준다.
+
+```bash
+curl -sI http://segue.asia | head -1     # 301
+curl -sI https://segue.asia | head -1    # 200
+certbot certificates                     # 만료일 확인
+```
+
+> **certbot 은 `/etc/nginx/sites-available/segue` 를 직접 고친다.** 443 블록과 인증서 경로가
+> 그 파일에 추가되므로, 이후 재배포할 때 `deploy/nginx-segue.conf` 를 다시 복사하면 TLS 설정이
+> 통째로 사라진다. nginx 설정을 바꿔야 하면 서버의 파일을 직접 편집한다.
+
+인증서는 90일짜리이고 `certbot.timer` 가 자동 갱신한다 (`systemctl status certbot.timer`).
+
+**HTTPS 를 적용했으면 `application-prod.properties` 의 `cors.allowed-origins` 도 `https://` 주소여야
+한다.** 값이 어긋나면 브라우저 요청만 403 이 되는데, `curl` 은 `Origin` 헤더를 붙이지 않아 정상으로
+보인다. 아래 8번의 Origin 포함 확인을 반드시 거칠 것.
+
 ## 7. 프론트 배포
 
 프론트 빌드 결과물(`dist/` 또는 `build/web/`)의 **내용물**을 `/var/www/segue/` 에 넣는다.
 
 ```bash
 # 로컬에서
-scp -r dist/* root@<서버IP>:/var/www/segue/
+scp -r build/web/* root@segue.asia:/var/www/segue/
 ```
 
-프론트는 빌드 전에 API 호출을 **상대 경로**(`/api/...`)로 바꿔야 한다. 절대 주소를 쓰면 서버
-주소가 바뀔 때마다 다시 빌드해야 한다.
+프론트는 API 주소를 빌드 시점에 주입한다. **반드시 `https://` 로 빌드해야 한다.** HTTPS 페이지에서
+HTTP API 를 호출하면 브라우저가 혼합 콘텐츠로 차단한다.
+
+```bash
+flutter build web --dart-define=API_BASE_URL=https://segue.asia --dart-define=APP_ENV=prod
+```
+
+> 재배포 후에는 **하드 리프레시**(`Cmd/Ctrl + Shift + R`)가 필요하다. 서비스 워커가 이전 파일을
+> 캐싱하고 있어 그냥 새로고침하면 옛 빌드가 그대로 뜬다.
 
 ## 8. 확인
 
 ```bash
-curl -s http://localhost/api/products | head -c 120   # 서버에서
-curl -s http://<서버IP>/api/products | head -c 120    # 외부에서
+curl -s https://segue.asia/api/products | head -c 120
 ```
 
 `{"id":1,...}` 로 시작하는 제품 12개가 나오면 정상이다.
+
+**여기서 끝내면 안 된다.** 위 요청에는 `Origin` 헤더가 없어서 CORS 설정이 틀려 있어도 200 이
+나온다. 브라우저와 같은 조건으로 한 번 더 확인한다.
+
+```bash
+# 허용된 오리진 -> 200
+curl -s -o /dev/null -w '%{http_code}\n' -H 'Origin: https://segue.asia' \
+  https://segue.asia/api/products
+
+# 허용되지 않은 오리진 -> 403 (이게 200 이면 CORS 가 전체 허용 상태다)
+curl -s -o /dev/null -w '%{http_code}\n' -H 'Origin: https://evil.example.com' \
+  https://segue.asia/api/products
+```
+
+앞이 `200`, 뒤가 `403` 이어야 한다. 앞이 403 이면 `cors.allowed-origins` 가 실제 서비스 주소와
+어긋난 것이고, 이 상태에서는 **화면에서 로그인이 되지 않는다.**
 
 ---
 
