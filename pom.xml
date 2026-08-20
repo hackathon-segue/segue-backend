@@ -66,6 +66,16 @@
 			<artifactId>spring-boot-starter-data-jpa-test</artifactId>
 			<scope>test</scope>
 		</dependency>
+		<!--
+			테스트는 MySQL 대신 인메모리 H2 를 쓴다. 운영 접속 정보는 .env 에서 오는데 .env 는
+			커밋되지 않으므로, 저장소를 clone 한 사람이 ./mvnw test 를 돌리면 DB 접속 정보가
+			없어 컨텍스트 로딩부터 실패한다. 테스트가 외부 DB 에 의존하지 않도록 분리한다.
+		-->
+		<dependency>
+			<groupId>com.h2database</groupId>
+			<artifactId>h2</artifactId>
+			<scope>test</scope>
+		</dependency>
 		<dependency>
 			<groupId>org.springframework.boot</groupId>
 			<artifactId>spring-boot-starter-validation-test</artifactId>
