@@ -1,22 +1,36 @@
 # API.md — Segue Backend API 명세
 
 Base URL (로컬): `http://localhost:8080`
-모든 요청/응답은 `application/json`. CORS는 `/api/**` 전체에 대해 모든 origin 허용(`CorsConfig`).
+모든 요청/응답은 `application/json`.
+
+CORS는 환경별로 다르다. 개발은 프론트 개발 서버 포트가 매번 바뀌므로 모든 origin 을 허용하고,
+운영(`prod` 프로필)은 `application-prod.properties` 의 `cors.allowed-origins` 에 적힌 주소만 허용한다.
 
 에러 응답 공통 포맷:
 ```json
 { "message": "사람이 읽을 수 있는 에러 설명" }
 ```
 - 404: 리소스 없음 (예: 고객/SKU 조회 실패)
-- 400: 요청 값 검증 실패
+- 400: 요청 값 검증 실패 (Bean Validation)
+- 401: 로그인 실패 / 현재 비밀번호 불일치
 - 403: 고객 동의가 필요함 (기능명세서 5번, 아래 "동의 관리" 참고)
+- 409: 이메일·전화번호 중복
 - 502: AI(OpenAI) 호출 실패
+
+### 400 Bad Request — Bean Validation 실패 예시
+
+필수 필드 누락, 타입 불일치 등 `@Valid` 검증에 실패하면 400을 반환한다. `message`에는 실패한 필드명과 사유가 세미콜론(`;`)으로 구분되어 포함된다.
+
+```json
+{ "message": "customerId: must not be null; color: must not be blank" }
+```
 
 ---
 
 ## 전체 플로우 순서 (프론트 구현 가이드)
 
-1. **고객 모바일**: `POST /api/cart` 로 컬러/사이즈 선택 후 담기
+0. **고객 모바일**: `POST /api/customers/signup` 또는 `POST /api/customers/login` (응답의 `id` 를 `customerId` 로 보관) → `GET /api/products` 로 제품 목록 브라우징 → `GET /api/products/{id}` 로 제품 상세(컬러·사이즈 옵션) 확인
+1. **고객 모바일**: `POST /api/cart` 로 컬러/사이즈 선택 후 담기 (본인 쇼핑백 확인은 `GET /api/cart/mine`)
 2. **태블릿**: `GET /api/customers/lookup` 로 고객 조회
 3. 응답의 `hasConsented` 가 `false` 면 데이터 이용 동의 화면을 먼저 보여주고 `POST /api/customers/{id}/consent` 로 기록
 4. `GET /api/cart` 로 장바구니+재고 확인 (동의 안 된 고객이면 403)
@@ -26,9 +40,95 @@ Base URL (로컬): `http://localhost:8080`
 8. `POST /api/consultations/decide` 호출 (이 호출 동안 프론트는 "AI 분석 중" 로딩 상태만 표시, 별도 화면 전환 없음)
 9. Last Intent Card 표시 → 실행 버튼 탭 → `POST /api/consultations/execute`
 10. 완료 메시지 표시. 이후 CA가 실제 확인 결과를 알게 되면 `PATCH /api/consultations/{id}/execution-status` 로 후속 상태 갱신
-11. **고객 모바일**: `GET /api/consultations/customers/{customerId}` 로 결과 및 현재 처리 상태 확인
+11. **고객 모바일**: `GET /api/consultations/customers/{customerId}?page=0&size=10` 으로 결과 및 현재 처리 상태 확인 (응답은 배열)
 
 > **무상태 설계**: 서버는 상담 진행 중 상태를 세션으로 들고 있지 않는다. 5-9 단계에서 서버가 응답한 값(특히 `structuredIntent`, `decide` 응답 전체)은 프론트가 들고 있다가 다음 요청에 그대로 담아 보내야 한다.
+
+---
+
+## 0. 제품 목록/상세 조회 (F0)
+
+고객 모바일에서 장바구니에 담기 전, 제품을 브라우징하고 컬러/사이즈를 고르는 단계. DB 기반이며 프론트에서 더미로 만들지 않는다.
+
+### `GET /api/products`
+
+응답 `200`:
+```json
+[
+  { "id": 1, "name": "MCM 백팩 미디움", "imageUrl": "https://...", "category": "백팩" },
+  { "id": 2, "name": "MCM 크로스바디 백 스몰", "imageUrl": "https://...", "category": "크로스바디" }
+]
+```
+
+### `GET /api/products/{productId}`
+
+제품 상세 + 이 제품이 가진 모든 컬러·사이즈 SKU 옵션.
+
+응답 `200`:
+```json
+{
+  "id": 1,
+  "name": "MCM 백팩 미디움",
+  "imageUrl": "https://...",
+  "category": "백팩",
+  "options": [
+    {
+      "skuId": 1,
+      "color": "블랙",
+      "size": "미디움",
+      "material": "그레인 카프스킨 가죽",
+      "weightGrams": 650,
+      "storageStructure": "지퍼형 메인 수납 + 노트북 슬리브",
+      "wearStyle": "백팩(양쪽 숄더)",
+      "laptopCompatible": true
+    }
+  ]
+}
+```
+응답 `404`: 제품 없음.
+
+프론트는 `options` 중 고객이 고른 `color`/`size`를 그대로 `POST /api/cart` 요청의 `color`/`size`에 넣으면 된다 (아래 F0 장바구니 저장 참고).
+
+---
+
+## 0-1. CA 수동 제품 검색 (Issue #5)
+
+CA가 태블릿에서 제품을 수동 검색하는 백업 API. 제품명을 기본 조건으로, 선택적으로 SKU의 컬러/사이즈 조건을 추가할 수 있다. 컬러/사이즈를 지정하면 해당 조건에 맞는 SKU 옵션만 결과에 포함되고, 매칭 SKU가 없는 제품은 결과에서 제외된다.
+
+### `GET /api/products/search`
+
+| 파라미터 | 타입 | 필수 | 설명 |
+|---|---|---|---|
+| name | string (query) | ✅ | 제품명 검색어 (부분 일치, 대소문자 무시) |
+| color | string (query) | ❌ | SKU 컬러 필터 (정확 일치, 대소문자 무시) |
+| size | string (query) | ❌ | SKU 사이즈 필터 (정확 일치, 대소문자 무시) |
+
+응답 `200`:
+```json
+[
+  {
+    "id": 1,
+    "name": "MCM 백팩 미디움",
+    "imageUrl": "https://...",
+    "category": "백팩",
+    "options": [
+      {
+        "skuId": 1,
+        "color": "블랙",
+        "size": "미디움",
+        "material": "그레인 카프스킨 가죽",
+        "weightGrams": 650,
+        "storageStructure": "지퍼형 메인 수납 + 노트북 슬리브",
+        "wearStyle": "백팩(양쪽 숄더)",
+        "laptopCompatible": true
+      }
+    ]
+  }
+]
+```
+- 검색 결과가 없으면 빈 배열 `[]` 을 반환한다 (404가 아님).
+- `options` 배열에는 컬러/사이즈 필터를 통과한 SKU만 포함된다.
+- 컬러/사이즈를 지정하지 않으면 해당 제품의 모든 SKU 옵션이 포함된다.
 
 ---
 
@@ -84,6 +184,83 @@ CA가 고객에게 데이터 이용 목적·범위를 안내한 뒤 동의/비�
 
 ---
 
+## 1-2. 고객 회원가입 / 로그인 / 프로필 (고객 모바일)
+
+세션·토큰을 발급하지 않는다. 로그인 응답의 `id` 를 프론트가 보관해 이후 요청의 `customerId` 로 사용한다.
+새로고침하면 사라지므로 `localStorage` 등에 저장하는 것을 권한다.
+
+> **비밀번호는 어떤 응답에도 포함되지 않는다.** 단방향 해시(BCrypt)로 저장해 복원이 불가능하다.
+> "내 계정" 화면의 비밀번호 표시는 프론트에서 고정 마스킹 문자열(`••••••••`)을 렌더링해야 한다.
+
+데모용 테스트 계정:
+
+| 이메일 | 비밀번호 | 고객 |
+|---|---|---|
+| `kim@segue.test` | `segue1234` | 김세계 (동의 완료, 장바구니 있음) |
+| `lee@segue.test` | `segue1234` | 이수현 (동의 흐름 데모용) |
+
+### `POST /api/customers/signup`
+
+요청:
+```json
+{ "name": "박도윤", "email": "park@example.com", "password": "segue1234", "phoneNumber": "010-5555-6666" }
+```
+- `phoneNumber` **필수**. CA 가 태블릿에서 고객을 조회하는 유일한 키(F1)이므로, 없으면 상담 플로우를 시작할 수 없다.
+- `password` 는 **8자 이상**.
+- `email` 은 대소문자를 구분하지 않는다 (소문자로 정규화해 저장).
+
+응답 `201`:
+```json
+{ "id": 3, "name": "박도윤", "phoneNumber": "010-5555-6666", "email": "park@example.com", "hasConsented": false }
+```
+가입 직후 `hasConsented` 는 항상 `false` 다. 데이터 이용 동의는 매장에서 CA 가 받는다 (기능명세서 5번).
+
+응답 `409`: `{ "message": "이미 사용 중인 이메일 주소입니다." }` 또는 `{ "message": "이미 사용 중인 전화번호입니다." }`
+
+> 전화번호 중복은 **정규화 기준**이다. `010-1234-5678` 이 이미 있으면 `01012345678` 로도 가입할 수 없다.
+
+### `POST /api/customers/login`
+
+요청:
+```json
+{ "email": "kim@segue.test", "password": "segue1234" }
+```
+응답 `200`: 위 signup 응답과 동일한 형태.
+
+응답 `401`:
+```json
+{ "message": "이메일 또는 비밀번호가 일치하지 않습니다." }
+```
+> **실패 사유를 구분하지 않는다.** "없는 이메일"과 "틀린 비밀번호"를 나누면 특정 이메일의 가입 여부를
+> 확인할 수 있게 되므로 동일한 문구를 반환한다. 화면에도 이 한 문구만 표시하면 된다.
+
+### `PATCH /api/customers/{customerId}` — 프로필 편집
+
+요청 (세 필드 모두 필수):
+```json
+{ "name": "박도윤", "email": "park2@example.com", "phoneNumber": "010-5555-9999" }
+```
+응답 `200`: 갱신된 고객 정보.
+응답 `409`: 다른 고객이 이미 쓰는 이메일·전화번호. 본인의 기존 값을 그대로 보내는 것은 허용된다.
+
+### `PATCH /api/customers/{customerId}/password` — 비밀번호 변경
+
+요청:
+```json
+{ "currentPassword": "segue1234", "newPassword": "newpass1234" }
+```
+- `newPassword` 는 **8자 이상**.
+
+응답 `200`: 갱신된 고객 정보 (비밀번호는 포함되지 않음).
+응답 `401`: `{ "message": "현재 비밀번호가 일치하지 않습니다." }`
+
+### 주문 내역
+
+주문 기능은 구현하지 않는다 (CLAUDE.md P2 결제/배송 연동). "내 계정" 화면의 주문 내역은
+**빈 상태 고정**으로 표시한다 ("이 계정에 대한 주문 기록이 없습니다").
+
+---
+
 ## 2. 장바구니 저장 (F0)
 
 ### `POST /api/cart`
@@ -93,6 +270,17 @@ CA가 고객에게 데이터 이용 목적·범위를 안내한 뒤 동의/비�
 { "customerId": 1, "productId": 1, "color": "블랙", "size": "미디움" }
 ```
 - `productId` + `color` + `size` 조합으로 서버가 SKU를 찾아 저장한다 (일치하는 SKU가 없으면 404).
+
+응답 `404` (제품 자체가 존재하지 않는 경우):
+```json
+{ "message": "제품을 찾을 수 없습니다. productId=999" }
+```
+
+응답 `404` (제품은 존재하지만 요청한 컬러/사이즈 조합이 없는 경우):
+```json
+{ "message": "선택한 컬러/사이즈 조합(화이트/라지)은 존재하지 않습니다. 선택 가능한 옵션: 블랙/미디움" }
+```
+해당 제품에 실제로 등록된 SKU의 컬러/사이즈 조합을 함께 안내한다.
 
 응답 `201`:
 ```json
@@ -148,33 +336,57 @@ CA가 고객에게 데이터 이용 목적·범위를 안내한 뒤 동의/비�
 
 ---
 
+## 3-1. 고객 본인 쇼핑백 조회
+
+### `GET /api/cart/mine?customerId={customerId}&storeId={storeId}`
+
+응답 형태는 아래 `GET /api/cart` 와 동일하다. **차이는 동의 게이트뿐이다.**
+
+| 엔드포인트 | 용도 | 동의 게이트 |
+|---|---|---|
+| `GET /api/cart` | CA 가 태블릿에서 고객 장바구니 조회 (F2) | **있음** (없으면 403) |
+| `GET /api/cart/mine` | 고객이 자기 쇼핑백 조회 | 없음 |
+
+동의는 CA 가 고객 데이터를 열람할 때 확인하는 절차이므로, 고객 본인이 자기 쇼핑백을 보는 것은
+대상이 아니다. 고객 모바일에서는 `/mine` 을 사용해야 하며, `/api/cart` 를 쓰면 동의 전 고객에게 403 이 뜬다.
+
+`storeId` 는 선택이다. 고객 모바일에는 매장 문맥이 없으므로 생략하면 재고 필드가 전부 `false` 로 내려간다.
+
+---
+
 ## 4. 고객 의도 구조화 (F3)
 
 ### `POST /api/consultations/intent`
 
 요청:
 ```json
-{ "storeId": 1, "skuId": 1, "utterance": "이 로고 위치와 각진 형태가 좋아요. 오늘 살 필요는 없어요" }
+{ "storeId": 1, "skuId": 1, "utterance": "이 꼬냑 비세토스 컬러랑 다이아몬드 모양 핸들이 그대로인 제품이어야 해요. 색이나 소재가 다른 건 원하지 않아요. 오늘 아니어도 되니까, 다른 매장에 있으면 거기서 받아보고 싶어요" }
 ```
+
+> 위 발화는 **페르소나 4(오리지널 고수형)** 의 것이다. 데모·테스트 발화는 SCHEMA.md 의 페르소나 1~5 를
+> 단일 기준으로 사용한다 (이슈 #33).
 
 응답 `200`:
 ```json
 {
   "structuredIntent": {
     "purpose": "",
-    "essentialConditions": { "logoPosition": "정면중앙", "silhouette": "각진" },
+    "essentialConditions": { "colorFamily": "꼬냑", "handleType": "다이아몬드컷아웃" },
     "preferredConditions": {},
     "negotiableConditions": {},
     "purchaseUrgency": "FLEXIBLE",
     "physicalCheckAttributes": [],
     "canWait": true,
     "canVisitOtherStore": true,
-    "needsFollowUp": false,
-    "followUpReason": ""
+    "needsFollowUp": false
   },
   "needsFollowUp": false
 }
 ```
+
+> `canWait` / `canVisitOtherStore` 는 고객이 **명시적으로 말한 경우에만** true/false 가 되고, 언급이 없으면
+> `null` 입니다. 위 예시는 "오늘 당장 필요하진 않다"는 대기 가능 신호만 있고 타 매장 방문 의사는 말하지
+> 않은 경우입니다. 프론트는 이 세 값(`true`/`false`/`null`)을 모두 처리해야 합니다.
 
 ### `StructuredIntentDto` 필드 설명 (이후 모든 단계에서 동일한 구조 사용)
 
@@ -202,7 +414,7 @@ CA가 고객에게 데이터 이용 목적·범위를 안내한 뒤 동의/비�
 | logoVisibility | 높음 \| 중간 \| 낮음 |
 | logoPosition | 정면중앙 \| 정면하단 \| 스트랩 |
 | patternDensity | 높음 \| 중간 \| 낮음 |
-| silhouette | 각진 \| 라운드 \| 사각 |
+| silhouette | 라운드 \| 사각 |
 | structure | 하드 \| 소프트 |
 | sizeGrade | 미니 \| 스몰 \| 미디움 \| 라지 |
 | strapType | 체인스트랩 \| 패브릭스트랩 \| 패브릭+레더콤보 \| 벨트스트랩 |
@@ -358,7 +570,16 @@ CA가 고객에게 데이터 이용 목적·범위를 안내한 뒤 동의/비�
 
 ## 10. 고객 모바일 상담 결과 조회 (F8)
 
-### `GET /api/consultations/customers/{customerId}`
+### `GET /api/consultations/customers/{customerId}?page={page}&size={size}`
+
+| 파라미터 | 타입 | 기본값 | 설명 |
+|---|---|---|---|
+| page | int (query) | 0 | 조회할 페이지 번호 (0부터 시작) |
+| size | int (query) | 10 | 한 페이지당 결과 수 |
+
+정렬 기준: `consultedAt` DESC (최신 상담순). 동의하지 않은 고객이면 `403`.
+
+**응답은 배열이다.** 다른 목록 API(`/api/products`, `/api/cart` 등)와 동일한 형태이며, 페이징 메타데이터를 감싸는 객체를 반환하지 않는다. `page`/`size` 로 잘라 오는 동작은 그대로 유지된다.
 
 응답 `200`:
 ```json
@@ -366,19 +587,22 @@ CA가 고객에게 데이터 이용 목적·범위를 안내한 뒤 동의/비�
   {
     "id": 5,
     "skuId": 1,
-    "productName": "MCM 백팩 미디움",
-    "imageUrl": "https://...",
+    "productName": "M Diamond 비세토스 레더 믹스",
+    "imageUrl": "/images/products/bag1.png",
     "resultType": "EXACT_PRODUCT",
     "recommendedPath": "강남 신세계점 재고 확인",
-    "coreConditions": "로고가 정면 중앙에 오는 각진 실루엣을 중요하게 보고 계셨습니다.",
-    "consultedAt": "2026-08-16T15:20:00",
+    "coreConditions": "다이아몬드 컷아웃 핸들과 캔버스 소재를 반드시 유지하고자 하십니다.",
+    "consultedAt": "2026-08-19T15:20:00",
     "executionStatus": "REQUESTED",
     "executionNote": null,
-    "executionUpdatedAt": "2026-08-16T15:20:00"
+    "executionUpdatedAt": "2026-08-19T15:20:00"
   }
 ]
 ```
-최신 상담순(`consultedAt` DESC). 동의하지 않은 고객이면 `403`.
+- 결과가 없으면 빈 배열 `[]` 을 반환한다.
+- `executionNote` 는 `REQUESTED` 상태에서 `null` 이다 (`UNABLE`/`FOLLOW_UP_NEEDED` 일 때만 값이 있음).
+- 전체 개수를 알아야 하면 `size` 를 충분히 크게 주고 배열 길이를 사용한다. 데모 데이터 규모에서는
+  페이징 UI 가 필요하지 않다.
 
 `executionStatus` 값: `REQUESTED`(요청 접수) \| `UNABLE`(실행 불가) \| `FOLLOW_UP_NEEDED`(후속 확인 필요). 모바일 화면은 이 값에 따라 "확인 중" / "확인 어려움 — 사유: {executionNote}" / "추가 확인 필요 — {executionNote}" 등으로 표시하면 된다.
 

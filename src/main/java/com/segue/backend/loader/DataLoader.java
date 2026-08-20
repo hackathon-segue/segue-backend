@@ -5,6 +5,7 @@ import com.segue.backend.domain.enums.ConsentStatus;
 import com.segue.backend.repository.*;
 import lombok.RequiredArgsConstructor;
 import org.springframework.boot.CommandLineRunner;
+import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Component;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -12,19 +13,29 @@ import java.time.LocalDateTime;
 
 /**
  * P0 요구사항: 하드코딩된 고정 고객 2명 방식이 아니라 DB 테이블 기반으로 동작해야 하므로,
- * 애플리케이션 기동 시 이 클래스가 더미 데이터를 실제 MySQL 테이블에 INSERT 한다.
+ * 애플리케이션 기동 시 이 클래스가 더미 데이터를 실제 MySQL 테이블에 반영한다.
  *
- * 데모 시나리오 A·B·C·D 는 전부 "청담 본점에서 품절인 SKU S1(MCM 백팩 미디움 블랙 미디움)"을
- * 기준으로 상담을 시작하되, CA가 입력하는 고객 발화 내용에 따라 결정 엔진(F5)의 결과가
- * 갈리도록 후보 SKU(S2~S5)의 속성/재고를 설계했다. 각 시나리오가 왜 그 결과로 귀결되는지는
- * SCHEMA.md 의 "시나리오 성립 근거" 섹션에 정리되어 있다.
+ * <b>이 시딩은 멱등(idempotent)하다.</b> 예전에는 "고객이 한 명이라도 있으면 아무것도 하지 않고 반환"
+ * 하는 가드가 있었는데, MySQL 은 영속이므로 코드에서 시드 데이터를 고쳐도 기존 DB 에는 영원히
+ * 반영되지 않는 문제가 있었다. 실제로 두 번 발생했다.
+ * <ul>
+ *   <li>checked_at 이 최초 시딩 시각에 고정되어 12시간 후 모든 재고가 미확인 처리됨</li>
+ *   <li>제품 이미지 경로를 picsum 에서 /images/products/*.png 로 바꿨는데 DB 는 picsum 유지</li>
+ * </ul>
+ * 그래서 매 기동마다 자연 키(매장명, 제품명, 제품+컬러+사이즈, SKU+매장, 전화번호)로 찾아
+ * 있으면 갱신하고 없으면 생성한다. ID 는 유지되고, 고객이 만든 데이터(장바구니 추가분,
+ * 상담 결과, 동의 기록)는 건드리지 않는다.
  *
- * 모든 inventory 행은 confirmed=true, checkedAt=기동 시각으로 시딩해 재고 신뢰도 게이트가
- * 시나리오 A~D 결과에 영향을 주지 않도록 한다 (기능명세서 6번).
+ * MCM 실제 판매 제품 12개 기준 데모 데이터셋 ("최종 선정 12개 가방" 기획안 그대로 반영).
+ * 전부 SKU 1(M Diamond 비세토스 레더 믹스 · 꼬냑)에서 출발한다 — 청담 본점 품절 공통 기준 제품.
  *
- * 고객 동의(기능명세서 5번)는 일부러 두 고객의 상태를 다르게 시딩한다: 김세계는 AGREE 로 미리
- * 동의되어 있어 장바구니 조회~Last Intent 플로우를 바로 데모할 수 있고, 이수현은 동의 기록이
- * 아예 없어 "동의 필요" 차단 흐름(GET /api/cart -> 403)도 그대로 데모할 수 있다.
+ * 구성: 원제품 1개 + 페르소나별 정답 3개 + 혼동 후보(근접 오답) 6개 + 명확한 비적합 후보 2개.
+ * 각 후보가 왜 정답/오답인지는 SCHEMA.md 의 "MCM 12개 제품 데모 시나리오" 섹션에 정리되어 있다.
+ *
+ * 원제품(SKU 1)의 타 매장(강남 신세계점) 재고는 항상 "있음"으로 고정 시딩한다. DecisionEngine 은
+ * essential 조건을 만족하는 매장 내 대안이 있으면 그걸 먼저 제시하므로(③-보조 폴백), 페르소나 1·2·3·5는
+ * 이 값과 무관하게 원래 의도대로 동작하고, essential 이 원제품에만 유일하게 성립하는 페르소나 4만
+ * 자연스럽게 EXACT_PRODUCT(정확한 제품 확인)로 빠진다 — 수동 DB 토글이 필요 없다.
  */
 @Component
 @RequiredArgsConstructor
@@ -38,195 +49,314 @@ public class DataLoader implements CommandLineRunner {
     private final CustomerRepository customerRepository;
     private final CartItemRepository cartItemRepository;
     private final ConsentRecordRepository consentRecordRepository;
+    private final PasswordEncoder passwordEncoder;
+
+    /** 데모용 시드 계정 공통 비밀번호 (8자 이상 규칙 충족). 실제 배포 데이터가 아니다. */
+    private static final String SEED_PASSWORD = "segue1234";
 
     @Override
     @Transactional
     public void run(String... args) {
-        if (customerRepository.count() > 0) {
-            return; // 이미 시딩된 경우 재실행하지 않음
-        }
-
         LocalDateTime now = LocalDateTime.now();
 
         // ---------- 매장 ----------
-        Store cheongdam = storeRepository.save(Store.builder().name("청담 본점").build());
-        Store gangnam = storeRepository.save(Store.builder().name("강남 신세계점").build());
+        Store cheongdam = upsertStore("청담 본점");
+        Store gangnam = upsertStore("강남 신세계점");
 
-        // ---------- P1: 원제품 (청담 본점 품절, 강남점 보유) ----------
-        Product p1 = productRepository.save(Product.builder()
-                .name("MCM 백팩 미디움")
-                .imageUrl("https://picsum.photos/seed/mcm-backpack/600/600")
-                .category("백팩")
-                .build());
-        Sku s1 = skuRepository.save(Sku.builder()
-                .product(p1).color("블랙").size("미디움")
-                .material("그레인 카프스킨 가죽").weightGrams(650)
-                .storageStructure("지퍼형 메인 수납 + 노트북 슬리브")
-                .wearStyle("백팩(양쪽 숄더)")
-                .laptopCompatible(true)
-                .build());
-        productAttributeRepository.save(ProductAttribute.builder()
-                .sku(s1)
-                .colorFamily("블랙").colorTone("쿨").material("가죽")
-                .glossLevel("중간").logoVisibility("높음").logoPosition("정면중앙")
-                .patternDensity("높음").silhouette("각진").structure("하드")
-                .sizeGrade("미디움").strapType("패브릭+레더콤보").hardwareColor("골드")
-                .usageContext("데일리").weightGrade("보통").lockType("지퍼")
-                .internalStorageLevel("구획많음")
-                .build());
-        inventoryRepository.save(Inventory.builder()
-                .sku(s1).store(cheongdam)
-                .currentStoreInStock(false).otherStoreInStock(true).restockPlanned(false)
-                .confirmed(true).checkedAt(now)
-                .build());
-        inventoryRepository.save(Inventory.builder()
-                .sku(s1).store(gangnam)
-                .currentStoreInStock(true).otherStoreInStock(true).restockPlanned(false)
-                .confirmed(true).checkedAt(now)
-                .build());
+        // ---------- 1. 원제품 (공통 미보유 기준 제품) ----------
+        Sku s1 = createSku(cheongdam, gangnam,
+                "M Diamond 비세토스 레더 믹스", "핸드백",
+                "/images/products/bag1.png",
+                1590000,
+                "꼬냑", "M", "비세토스 모노그램 캔버스 + 나파 송아지 가죽 트림", 480,
+                "지퍼 클로저 + 내부 포켓", "핸드백/크로스바디 겸용", false, null,
+                Attr.of("꼬냑", "웜", "캔버스", "낮음", "높음", "정면중앙", "높음", "사각", "하드",
+                        "미디움", "벨트스트랩", "골드", "데일리", "가벼움", "마그네틱", "심플", "다이아몬드컷아웃"),
+                false, true, true); // 청담 품절, 강남 재고 있음 (페르소나 4 "정확한 제품 확인" 경로)
 
-        // ---------- P2: 비교 체험 후보 (청담 본점 보유, S1과 소재/광택 동일) ----------
-        Product p2 = productRepository.save(Product.builder()
-                .name("MCM 크로스바디 백 스몰")
-                .imageUrl("https://picsum.photos/seed/mcm-crossbody/600/600")
-                .category("크로스바디")
-                .build());
-        Sku s2 = skuRepository.save(Sku.builder()
-                .product(p2).color("다크브라운").size("스몰")
-                .material("그레인 카프스킨 가죽").weightGrams(420)
-                .storageStructure("플랩형 단일 수납")
-                .wearStyle("크로스바디")
-                .laptopCompatible(false)
-                .build());
-        productAttributeRepository.save(ProductAttribute.builder()
-                .sku(s2)
-                .colorFamily("브라운").colorTone("웜").material("가죽")
-                .glossLevel("중간").logoVisibility("낮음").logoPosition("스트랩")
-                .patternDensity("낮음").silhouette("라운드").structure("소프트")
-                .sizeGrade("스몰").strapType("체인스트랩").hardwareColor("골드")
-                .usageContext("이브닝").weightGrade("가벼움").lockType("플립")
-                .internalStorageLevel("심플")
-                .build());
-        inventoryRepository.save(Inventory.builder()
-                .sku(s2).store(cheongdam)
-                .currentStoreInStock(true).otherStoreInStock(true).restockPlanned(false)
-                .confirmed(true).checkedAt(now)
-                .build());
+        // ---------- 2. 디자인형 정답: M Diamond 엠보스드 레더 · 블랙 ----------
+        createSku(cheongdam, gangnam,
+                "M Diamond 엠보스드 레더", "핸드백",
+                "/images/products/bag2.png",
+                1850000,
+                "블랙", "M", "엠보스드 레더", 470,
+                "지퍼 클로저 + 내부 포켓", "핸드백/크로스바디 겸용", false, null,
+                Attr.of("블랙", "쿨", "가죽", "중간", "낮음", "정면하단", "낮음", "사각", "하드",
+                        "미디움", "벨트스트랩", "골드", "데일리", "가벼움", "마그네틱", "심플", "다이아몬드컷아웃"),
+                true, true, false);
 
-        // ---------- P3: 오늘 구매 후보 (청담 본점 보유, 노트북 수납 O) ----------
-        Product p3 = productRepository.save(Product.builder()
-                .name("MCM 토트백 라지")
-                .imageUrl("https://picsum.photos/seed/mcm-tote/600/600")
-                .category("토트백")
-                .build());
-        Sku s3 = skuRepository.save(Sku.builder()
-                .product(p3).color("블랙").size("라지")
-                .material("캔버스 + 레더 트리밍").weightGrams(780)
-                .storageStructure("오픈탑 + 노트북 구획")
-                .wearStyle("토트(손잡이 + 숄더스트랩)")
-                .laptopCompatible(true)
-                .build());
-        productAttributeRepository.save(ProductAttribute.builder()
-                .sku(s3)
-                .colorFamily("블랙").colorTone("뉴트럴").material("캔버스")
-                .glossLevel("낮음").logoVisibility("높음").logoPosition("정면하단")
-                .patternDensity("높음").silhouette("사각").structure("소프트")
-                .sizeGrade("라지").strapType("패브릭스트랩").hardwareColor("실버")
-                .usageContext("오피스").weightGrade("무거움").lockType("마그네틱")
-                .internalStorageLevel("구획많음")
-                .build());
-        inventoryRepository.save(Inventory.builder()
-                .sku(s3).store(cheongdam)
-                .currentStoreInStock(true).otherStoreInStock(false).restockPlanned(false)
-                .confirmed(true).checkedAt(now)
-                .build());
+        // ---------- 3. 시그니처·소재형 정답: M New Liz 비세토스 쇼퍼 · 꼬냑 ----------
+        createSku(cheongdam, gangnam,
+                "M New Liz 비세토스 쇼퍼", "쇼퍼백",
+                "/images/products/bag3.png",
+                1090000,
+                "꼬냑", "M", "비세토스 모노그램 캔버스 + 천연 가죽 트림", 520,
+                "탈착형 지퍼 파우치 포함, 오픈탑", "숄더", false, null,
+                Attr.of("꼬냑", "웜", "캔버스", "낮음", "높음", "정면중앙", "높음", "사각", "소프트",
+                        "미디움", "패브릭스트랩", "골드", "데일리", "보통", "지퍼", "구획많음", "일반"),
+                true, true, false);
 
-        // ---------- P4: 필러 (청담 본점 보유, 재고 있는 제품 카드 데모용) ----------
-        Product p4 = productRepository.save(Product.builder()
-                .name("MCM 숄더백 미니")
-                .imageUrl("https://picsum.photos/seed/mcm-shoulder/600/600")
-                .category("숄더백")
-                .build());
-        Sku s4 = skuRepository.save(Sku.builder()
-                .product(p4).color("베이지").size("미니")
-                .material("자카드 패브릭").weightGrams(310)
-                .storageStructure("심플 단일 수납")
-                .wearStyle("숄더")
-                .laptopCompatible(false)
-                .build());
-        productAttributeRepository.save(ProductAttribute.builder()
-                .sku(s4)
-                .colorFamily("베이지").colorTone("웜").material("패브릭")
-                .glossLevel("낮음").logoVisibility("중간").logoPosition("스트랩")
-                .patternDensity("중간").silhouette("라운드").structure("소프트")
-                .sizeGrade("미니").strapType("체인스트랩").hardwareColor("골드")
-                .usageContext("이브닝").weightGrade("가벼움").lockType("지퍼")
-                .internalStorageLevel("심플")
-                .build());
-        inventoryRepository.save(Inventory.builder()
-                .sku(s4).store(cheongdam)
-                .currentStoreInStock(true).otherStoreInStock(true).restockPlanned(false)
-                .confirmed(true).checkedAt(now)
-                .build());
+        // ---------- 4. 기능형 정답: L Aren 비세토스 N/S 토트 · 블랙 ----------
+        createSku(cheongdam, gangnam,
+                "L Aren 비세토스 N/S 토트", "토트백",
+                "/images/products/bag4.png",
+                1390000,
+                "블랙", "L", "비세토스 모노그램 캔버스 + 가죽 트림", 780,
+                "16인치 노트북·태블릿 포켓 + 다수의 내부 포켓", "토트(손잡이 + 숄더스트랩)", true, 16,
+                Attr.of("블랙", "쿨", "캔버스", "낮음", "높음", "정면중앙", "높음", "사각", "하드",
+                        "라지", "패브릭스트랩", "건메탈", "오피스", "무거움", "지퍼", "구획많음", "일반"),
+                true, true, false);
 
-        // ---------- P5: 두 번째 품절 제품 (F2 다중 품절 목록 데모, 입고 예정만 존재) ----------
-        Product p5 = productRepository.save(Product.builder()
-                .name("MCM 벨트백")
-                .imageUrl("https://picsum.photos/seed/mcm-beltbag/600/600")
-                .category("벨트백")
-                .build());
-        Sku s5 = skuRepository.save(Sku.builder()
-                .product(p5).color("블랙").size("스몰")
-                .material("사피아노 가죽").weightGrams(280)
-                .storageStructure("지퍼형 단일 수납")
-                .wearStyle("벨트 / 크로스바디 겸용")
-                .laptopCompatible(false)
-                .build());
-        productAttributeRepository.save(ProductAttribute.builder()
-                .sku(s5)
-                .colorFamily("블랙").colorTone("쿨").material("가죽")
-                .glossLevel("높음").logoVisibility("중간").logoPosition("스트랩")
-                .patternDensity("낮음").silhouette("라운드").structure("하드")
-                .sizeGrade("미니").strapType("벨트스트랩").hardwareColor("건메탈")
-                .usageContext("데일리").weightGrade("가벼움").lockType("지퍼")
-                .internalStorageLevel("심플")
-                .build());
-        inventoryRepository.save(Inventory.builder()
-                .sku(s5).store(cheongdam)
-                .currentStoreInStock(false).otherStoreInStock(false).restockPlanned(true)
-                .confirmed(true).checkedAt(now)
-                .build());
+        // ---------- 5. 디자인 혼동 후보 A: S 뮌헨 비세토스 토트 · 꼬냑 (실루엣만 비슷, 핸들 다름) ----------
+        createSku(cheongdam, gangnam,
+                "S 뮌헨 비세토스 토트", "토트백",
+                "/images/products/bag5.png",
+                1290000,
+                "꼬냑", "S", "비세토스 모노그램 캔버스 + 가죽 핸들", 430,
+                "지퍼 클로저 + 심플 수납", "토트/크로스바디 겸용", false, null,
+                Attr.of("꼬냑", "웜", "캔버스", "낮음", "높음", "정면중앙", "높음", "사각", "하드",
+                        "스몰", "벨트스트랩", "골드", "데일리", "가벼움", "지퍼", "심플", "일반"),
+                true, true, false);
+
+        // ---------- 6. 디자인 혼동 후보 B: 미니 Diamond 카프 레더 숄더백 · 블랙 (핸들 일부만 유사) ----------
+        createSku(cheongdam, gangnam,
+                "미니 Diamond 카프 레더 숄더백", "숄더백",
+                "/images/products/bag6.png",
+                1050000,
+                "블랙", "미니", "카프 레더", 290,
+                "플랩형 단일 수납", "숄더", false, null,
+                Attr.of("블랙", "쿨", "가죽", "중간", "낮음", "정면하단", "낮음", "라운드", "소프트",
+                        "미니", "체인스트랩", "골드", "이브닝", "가벼움", "플립", "심플", "일반"),
+                true, true, false);
+
+        // ---------- 7. 소재 혼동 후보 A: S Milla 그레인 가죽 토트 · 오렌지에이드 ----------
+        createSku(cheongdam, gangnam,
+                "S Milla 그레인 가죽 토트", "토트백",
+                "/images/products/bag7.png",
+                1690000,
+                "오렌지에이드", "S", "그레인 가죽", 460,
+                "지퍼 클로저 + 심플 수납", "토트/크로스바디 겸용", false, null,
+                Attr.of("오렌지", "웜", "가죽", "높음", "낮음", "정면하단", "낮음", "사각", "하드",
+                        "스몰", "벨트스트랩", "골드", "데일리", "보통", "지퍼", "심플", "일반"),
+                true, true, false);
+
+        // ---------- 8. 시그니처 혼동 후보 B: S Aren 비세토스 듀오 호보 · 블랙 ----------
+        createSku(cheongdam, gangnam,
+                "S Aren 비세토스 듀오 호보", "크로스바디",
+                "/images/products/bag8.png",
+                1290000,
+                "블랙", "S", "비세토스 모노그램 캔버스 + 나파 가죽", 350,
+                "지퍼형 심플 수납", "크로스바디/숄더", false, null,
+                Attr.of("블랙", "쿨", "캔버스", "낮음", "중간", "정면중앙", "중간", "라운드", "소프트",
+                        "스몰", "체인스트랩", "실버", "이브닝", "가벼움", "지퍼", "심플", "일반"),
+                true, true, false);
+
+        // ---------- 9. 기능 혼동 후보 A: M Stark 사이드 스터드 비세토스 백팩 · 꼬냑 (13인치까지만) ----------
+        createSku(cheongdam, gangnam,
+                "M Stark 사이드 스터드 비세토스 백팩", "백팩",
+                "/images/products/bag9.png",
+                1890000,
+                "꼬냑", "M", "비세토스 모노그램 캔버스 + 가죽 트림", 650,
+                "지퍼형 메인 수납 + 13인치 노트북 슬리브", "백팩(양쪽 숄더)", true, 13,
+                Attr.of("꼬냑", "웜", "캔버스", "낮음", "높음", "정면중앙", "높음", "사각", "소프트",
+                        "미디움", "패브릭스트랩", "골드", "오피스", "보통", "지퍼", "구획많음", "일반"),
+                true, true, false);
+
+        // ---------- 10. 기능 혼동 후보 B: M Aren ECONYL 가죽 백팩 · 그린 (스펙은 맞지만 오늘 재고 없음) ----------
+        createSku(cheongdam, gangnam,
+                "M Aren ECONYL 가죽 백팩", "백팩",
+                "/images/products/bag10.png",
+                1650000,
+                "그린", "M", "ECONYL 재생나일론 + 가죽 트림", 600,
+                "16인치 노트북 슬리브 + 다수 포켓", "백팩(양쪽 숄더)", true, 16,
+                Attr.of("그린", "쿨", "패브릭", "중간", "낮음", "정면하단", "낮음", "사각", "소프트",
+                        "미디움", "패브릭스트랩", "건메탈", "오피스", "보통", "지퍼", "구획많음", "일반"),
+                false, true, true); // 청담 없음, 강남 있음(타 매장 재고 있음)
+
+        // ---------- 11. 명확한 비적합 후보 A: 미니 Tracy 비세토스 레더 믹스 크로스바디 · 꼬냑 ----------
+        createSku(cheongdam, gangnam,
+                "미니 Tracy 비세토스 레더 믹스 크로스바디", "크로스바디",
+                "/images/products/bag11.png",
+                1050000,
+                "꼬냑", "미니", "비세토스 모노그램 캔버스 + 가죽 트림", 220,
+                "플립형 심플 수납", "크로스바디", false, null,
+                Attr.of("꼬냑", "웜", "캔버스", "낮음", "높음", "정면중앙", "높음", "사각", "소프트",
+                        "미니", "체인스트랩", "골드", "이브닝", "가벼움", "플립", "심플", "일반"),
+                true, true, false);
+
+        // ---------- 12. 명확한 비적합 후보 B: S Pina 비세토스 탬버린 백 · 꼬냑 ----------
+        createSku(cheongdam, gangnam,
+                "S Pina 비세토스 탬버린 백", "크로스바디",
+                "/images/products/bag12.png",
+                1690000,
+                "꼬냑", "S", "비세토스 모노그램 캔버스", 280,
+                "지퍼형 단일 수납", "크로스바디", false, null,
+                Attr.of("꼬냑", "웜", "캔버스", "낮음", "높음", "정면중앙", "높음", "라운드", "하드",
+                        "스몰", "체인스트랩", "골드", "이브닝", "가벼움", "지퍼", "심플", "일반"),
+                false, true, false); // 재고 없음 (명확한 비적합 후보)
 
         // ---------- 고객 ----------
-        Customer kim = customerRepository.save(Customer.builder()
-                .name("김세계").phoneNumber("010-1234-5678").build());
-        Customer lee = customerRepository.save(Customer.builder()
-                .name("이수현").phoneNumber("010-9876-5432").build());
+        // 고객은 전화번호를 자연 키로 upsert 한다. 장바구니 초기 데이터는 신규로 만들어진 경우에만
+        // 넣어, 재기동할 때마다 같은 항목이 다시 쌓이지 않게 한다.
+        boolean kimIsNew = customerRepository.findByPhoneNumber("010-1234-5678").isEmpty();
+        Customer kim = upsertCustomer("김세계", "010-1234-5678", "kim@segue.test");
+        boolean leeIsNew = customerRepository.findByPhoneNumber("010-9876-5432").isEmpty();
+        Customer lee = upsertCustomer("이수현", "010-9876-5432", "lee@segue.test");
 
-        // ---------- 고객 동의 (기능명세서 5번) ----------
-        consentRecordRepository.save(ConsentRecord.builder()
-                .customer(kim).status(ConsentStatus.AGREE)
-                .scope("장바구니 조회, 구매 의도·상담 결과 저장, 고객 모바일 재확인")
-                .consentedAt(now)
-                .build());
-        // 이수현은 의도적으로 동의 기록을 남기지 않는다 -> "동의 필요" 차단 흐름 데모용.
+        // ---------- 고객 동의 ----------
+        // 동의 상태는 장바구니와 달리 매 기동마다 시드 상태로 되돌린다. 데모 진행이나 프론트
+        // 테스트 중에 동의 버튼을 누르면 상태가 바뀌는데, 되돌리는 방법이 수동 DB 조작뿐이면
+        // "동의 필요(403) 차단 흐름" 시연이 조용히 불가능해진다.
+        syncSeedConsent(kim, true, now);   // 김세계: 동의 완료 상태로 시작
+        syncSeedConsent(lee, false, now);  // 이수현: 동의 기록 없는 상태로 시작 (403 차단 흐름 데모용)
 
-        // ---------- 장바구니 ----------
-        // 김세계 장바구니: 품절 2건(S1, S5) + 보유 1건(S4) -> 태블릿 F2 화면에서
-        // "Last Intent 시작" 버튼 2개 + "제품 확인하기" 버튼 1개가 동시에 보이는 것을 데모.
-        cartItemRepository.save(CartItem.builder()
-                .customer(kim).sku(s1).color(s1.getColor()).size(s1.getSize())
-                .savedAt(now.minusMinutes(5)).build());
-        cartItemRepository.save(CartItem.builder()
-                .customer(kim).sku(s5).color(s5.getColor()).size(s5.getSize())
-                .savedAt(now.minusMinutes(20)).build());
-        cartItemRepository.save(CartItem.builder()
-                .customer(kim).sku(s4).color(s4.getColor()).size(s4.getSize())
-                .savedAt(now.minusMinutes(40)).build());
+        if (kimIsNew) {
+            // ---------- 장바구니: 세 페르소나가 공통으로 담는 원제품(SKU 1) ----------
+            cartItemRepository.save(CartItem.builder()
+                    .customer(kim).sku(s1).color(s1.getColor()).size(s1.getSize())
+                    .savedAt(now.minusMinutes(5)).build());
+        }
 
-        // 이수현 장바구니: 보유 재고 1건 (단, 동의 전이므로 GET /api/cart 는 403)
-        cartItemRepository.save(CartItem.builder()
-                .customer(lee).sku(s2).color(s2.getColor()).size(s2.getSize())
-                .savedAt(now.minusHours(1)).build());
+        if (leeIsNew) {
+            // 이수현 장바구니: 동의 전이므로 GET /api/cart 는 403
+            cartItemRepository.save(CartItem.builder()
+                    .customer(lee).sku(s1).color(s1.getColor()).size(s1.getSize())
+                    .savedAt(now.minusHours(1)).build());
+        }
+    }
+
+    /**
+     * 시드 계정의 동의 상태를 코드에 정의된 값으로 되돌린다.
+     *
+     * 회원가입으로 만들어진 고객은 대상이 아니다 (이 메서드는 시드 계정 2명에게만 호출된다).
+     * 시연 중 이수현에게 동의를 받은 뒤 재기동하면 초기 상태로 돌아가는데, 데모 전용 계정이라
+     * 반복 시연에 오히려 유리하다.
+     */
+    private void syncSeedConsent(Customer customer, boolean shouldAgree, LocalDateTime now) {
+        consentRecordRepository.findByCustomerId(customer.getId()).ifPresent(existing -> {
+            if (!shouldAgree) {
+                consentRecordRepository.delete(existing);
+            }
+        });
+        if (!shouldAgree) {
+            return;
+        }
+        ConsentRecord record = consentRecordRepository.findByCustomerId(customer.getId())
+                .orElseGet(() -> ConsentRecord.builder().customer(customer).build());
+        record.setStatus(ConsentStatus.AGREE);
+        record.setScope("장바구니 조회, 구매 의도·상담 결과 저장, 고객 모바일 재확인");
+        record.setConsentedAt(now);
+        consentRecordRepository.save(record);
+    }
+
+    private Store upsertStore(String name) {
+        return storeRepository.findByName(name)
+                .orElseGet(() -> storeRepository.save(Store.builder().name(name).build()));
+    }
+
+    /**
+     * 데모용 시드 계정. 이메일은 시드 정체성이므로 매 기동마다 동기화하고, 비밀번호는 값이
+     * 없을 때만 채운다 (프로필 편집으로 바꾼 비밀번호가 재기동 때 초기화되지 않도록).
+     */
+    private Customer upsertCustomer(String name, String phoneNumber, String email) {
+        Customer customer = customerRepository.findByPhoneNumber(phoneNumber)
+                .orElseGet(() -> customerRepository.save(
+                        Customer.builder().name(name).phoneNumber(phoneNumber).build()));
+        customer.setName(name);
+        customer.setEmail(email);
+        if (customer.getPassword() == null) {
+            customer.setPassword(passwordEncoder.encode(SEED_PASSWORD));
+        }
+        return customer;
+    }
+
+    private Sku createSku(Store cheongdam, Store gangnam,
+                           String productName, String category, String imageUrl,
+                           Integer price,
+                           String color, String size, String materialText, Integer weightGrams,
+                           String storageStructure, String wearStyle,
+                           boolean laptopCompatible, Integer laptopMaxInch,
+                           Attr attr,
+                           boolean inStockAtCheongdam, boolean confirmed, boolean inStockAtGangnam) {
+        Product product = productRepository.findByName(productName)
+                .map(existing -> {
+                    existing.setImageUrl(imageUrl);
+                    existing.setCategory(category);
+                    existing.setPrice(price);
+                    return existing;
+                })
+                .orElseGet(() -> productRepository.save(Product.builder()
+                        .name(productName).imageUrl(imageUrl).category(category).price(price)
+                        .build()));
+
+        // NOT NULL 컬럼(product, color, size, laptop_compatible)은 반드시 생성 시점에 채운다.
+        // 나머지 값은 아래에서 setter 로 채우지만, laptopCompatible 을 빼고 save 하면 INSERT 가
+        // laptop_compatible=null 로 나가 제약 위반으로 실패한다. 기존 SKU 가 이미 있는 DB 에서는
+        // 이 분기를 타지 않아 드러나지 않고, 빈 DB 로 처음 기동할 때만 터진다.
+        Sku sku = skuRepository.findByProductIdAndColorAndSize(product.getId(), color, size)
+                .orElseGet(() -> skuRepository.save(Sku.builder()
+                        .product(product).color(color).size(size)
+                        .laptopCompatible(laptopCompatible)
+                        .build()));
+        sku.setMaterial(materialText);
+        sku.setWeightGrams(weightGrams);
+        sku.setStorageStructure(storageStructure);
+        sku.setWearStyle(wearStyle);
+        sku.setLaptopCompatible(laptopCompatible);
+        sku.setLaptopMaxInch(laptopMaxInch);
+
+        ProductAttribute attribute = productAttributeRepository.findBySkuId(sku.getId())
+                .orElseGet(() -> productAttributeRepository.save(
+                        ProductAttribute.builder().sku(sku).build()));
+        applyAttribute(attribute, attr);
+
+        LocalDateTime now = LocalDateTime.now();
+        upsertInventory(sku, cheongdam, inStockAtCheongdam, inStockAtGangnam, confirmed, now);
+        upsertInventory(sku, gangnam, inStockAtGangnam, inStockAtCheongdam, confirmed, now);
+
+        return sku;
+    }
+
+    private void applyAttribute(ProductAttribute a, Attr attr) {
+        a.setColorFamily(attr.colorFamily); a.setColorTone(attr.colorTone); a.setMaterial(attr.material);
+        a.setGlossLevel(attr.glossLevel); a.setLogoVisibility(attr.logoVisibility);
+        a.setLogoPosition(attr.logoPosition); a.setPatternDensity(attr.patternDensity);
+        a.setSilhouette(attr.silhouette); a.setStructure(attr.structure); a.setSizeGrade(attr.sizeGrade);
+        a.setStrapType(attr.strapType); a.setHardwareColor(attr.hardwareColor);
+        a.setUsageContext(attr.usageContext); a.setWeightGrade(attr.weightGrade);
+        a.setLockType(attr.lockType); a.setInternalStorageLevel(attr.internalStorageLevel);
+        a.setHandleType(attr.handleType);
+    }
+
+    private void upsertInventory(Sku sku, Store store, boolean currentStoreInStock,
+                                  boolean otherStoreInStock, boolean confirmed, LocalDateTime now) {
+        Inventory inventory = inventoryRepository.findBySkuIdAndStoreId(sku.getId(), store.getId())
+                .orElseGet(() -> inventoryRepository.save(
+                        Inventory.builder().sku(sku).store(store)
+                                .currentStoreInStock(currentStoreInStock).otherStoreInStock(otherStoreInStock)
+                                .restockPlanned(false).confirmed(confirmed).checkedAt(now)
+                                .build()));
+        inventory.setCurrentStoreInStock(currentStoreInStock);
+        inventory.setOtherStoreInStock(otherStoreInStock);
+        inventory.setRestockPlanned(false);
+        inventory.setConfirmed(confirmed);
+        inventory.setCheckedAt(now);
+    }
+
+    /** ProductAttribute 16(+1) 개 필드를 인자 순서로 한 번에 받는 값 객체 (DataLoader 내부 전용). */
+    private record Attr(String colorFamily, String colorTone, String material, String glossLevel,
+                         String logoVisibility, String logoPosition, String patternDensity, String silhouette,
+                         String structure, String sizeGrade, String strapType, String hardwareColor,
+                         String usageContext, String weightGrade, String lockType, String internalStorageLevel,
+                         String handleType) {
+        static Attr of(String colorFamily, String colorTone, String material, String glossLevel,
+                       String logoVisibility, String logoPosition, String patternDensity, String silhouette,
+                       String structure, String sizeGrade, String strapType, String hardwareColor,
+                       String usageContext, String weightGrade, String lockType, String internalStorageLevel,
+                       String handleType) {
+            return new Attr(colorFamily, colorTone, material, glossLevel, logoVisibility, logoPosition,
+                    patternDensity, silhouette, structure, sizeGrade, strapType, hardwareColor, usageContext,
+                    weightGrade, lockType, internalStorageLevel, handleType);
+        }
     }
 }

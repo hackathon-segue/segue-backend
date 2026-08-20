@@ -12,6 +12,7 @@ public class CustomerResponse {
     private Long id;
     private String name;
     private String phoneNumber;
+    private String email;
     /** 기능명세서 5번: 최신 확정 동의 상태가 AGREE 인지 여부. false 면 장바구니 조회 전에 동의부터 받아야 한다. */
     private boolean hasConsented;
 
@@ -20,6 +21,7 @@ public class CustomerResponse {
                 .id(customer.getId())
                 .name(customer.getName())
                 .phoneNumber(customer.getPhoneNumber())
+                .email(customer.getEmail())
                 .hasConsented(hasConsented)
                 .build();
     }

@@ -17,6 +17,7 @@ import com.segue.backend.exception.NotFoundException;
 import com.segue.backend.repository.*;
 import lombok.RequiredArgsConstructor;
 import org.springframework.beans.factory.annotation.Value;
+import org.springframework.data.domain.Pageable;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -202,13 +203,20 @@ public class ConsultationService {
         return ConsultationResultResponse.from(result);
     }
 
+    /**
+     * F8: 고객 모바일에서 자신의 상담 결과를 재확인한다.
+     *
+     * Page 객체가 아니라 배열(List)을 반환한다. 다른 목록 API(/api/products, /api/cart 등)가 모두
+     * 배열이라 이 엔드포인트만 형태가 달랐고, Page 를 그대로 직렬화하면 pageable/sort 같은
+     * 프레임워크 내부 구조가 API 계약에 섞여 들어간다. page/size 로 잘라 오는 동작은 유지한다.
+     */
     @Transactional(readOnly = true)
-    public List<ConsultationResultResponse> getResultsForCustomer(Long customerId) {
+    public List<ConsultationResultResponse> getResultsForCustomer(Long customerId, Pageable pageable) {
         // 기능명세서 5번: 동의한 경우에만 고객 모바일에서 상담 결과를 재확인할 수 있다.
         customerService.requireConsent(customerId);
-        return consultationResultRepository.findByCustomerIdOrderByConsultedAtDesc(customerId).stream()
+        return consultationResultRepository.findByCustomerIdOrderByConsultedAtDesc(customerId, pageable)
                 .map(ConsultationResultResponse::from)
-                .toList();
+                .getContent();
     }
 
     // ---------- helpers ----------

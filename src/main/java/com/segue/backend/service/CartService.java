@@ -9,6 +9,7 @@ import com.segue.backend.dto.response.CartItemResponse;
 import com.segue.backend.exception.NotFoundException;
 import com.segue.backend.repository.CartItemRepository;
 import com.segue.backend.repository.InventoryRepository;
+import com.segue.backend.repository.ProductRepository;
 import com.segue.backend.repository.SkuRepository;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
@@ -17,6 +18,7 @@ import org.springframework.transaction.annotation.Transactional;
 import java.time.LocalDateTime;
 import java.util.List;
 import java.util.Optional;
+import java.util.stream.Collectors;
 
 /** F0: 장바구니 저장, F2: 장바구니 및 SKU 기준 재고 확인 */
 @Service
@@ -26,6 +28,7 @@ public class CartService {
     private final CartItemRepository cartItemRepository;
     private final SkuRepository skuRepository;
     private final InventoryRepository inventoryRepository;
+    private final ProductRepository productRepository;
     private final CustomerService customerService;
 
     @Transactional
@@ -33,15 +36,24 @@ public class CartService {
         Customer customer = customerService.getById(request.getCustomerId());
         Sku sku = skuRepository.findByProductIdAndColorAndSize(
                         request.getProductId(), request.getColor(), request.getSize())
-                .orElseThrow(() -> new NotFoundException("해당 컬러/사이즈 조합의 SKU를 찾을 수 없습니다."));
+                .orElseThrow(() -> buildSkuNotFoundException(request.getProductId(), request.getColor(), request.getSize()));
 
-        CartItem saved = cartItemRepository.save(CartItem.builder()
-                .customer(customer)
-                .sku(sku)
-                .color(request.getColor())
-                .size(request.getSize())
-                .savedAt(LocalDateTime.now())
-                .build());
+        // F2 는 장바구니를 "최근 담은 순"으로 보여주고 항목마다 상담 시작 버튼을 배치한다.
+        // 같은 SKU 를 다시 담았을 때 행을 늘리면 태블릿에 동일한 제품이 여러 줄로 뜨고
+        // "Last Intent 시작" 버튼도 중복되므로, 새 행을 만들지 않고 담은 시각만 갱신한다.
+        CartItem saved = cartItemRepository
+                .findFirstByCustomerIdAndSkuIdOrderBySavedAtDesc(customer.getId(), sku.getId())
+                .map(existing -> {
+                    existing.setSavedAt(LocalDateTime.now());
+                    return existing;
+                })
+                .orElseGet(() -> cartItemRepository.save(CartItem.builder()
+                        .customer(customer)
+                        .sku(sku)
+                        .color(request.getColor())
+                        .size(request.getSize())
+                        .savedAt(LocalDateTime.now())
+                        .build()));
 
         // 신규 저장 시점에는 재고 조회 없이도 표시 가능하므로 store 문맥 없이 기본 응답을 만든다.
         return toResponse(saved, null);
@@ -52,6 +64,21 @@ public class CartService {
         customerService.getById(customerId); // 존재 검증
         // 기능명세서 5번: CA의 회원 장바구니 조회는 고객 동의가 확인된 경우에만 허용한다.
         customerService.requireConsent(customerId);
+        return loadCart(customerId, storeId);
+    }
+
+    /**
+     * 고객 본인의 쇼핑백 조회. 동의 게이트를 적용하지 않는다.
+     * 동의는 CA 가 고객 데이터를 열람할 때 확인하는 절차이므로, 본인이 자기 장바구니를 보는 것은
+     * 대상이 아니다 (POST /api/cart 담기도 같은 이유로 게이트 대상이 아니다).
+     */
+    @Transactional(readOnly = true)
+    public List<CartItemResponse> getOwnCart(Long customerId, Long storeId) {
+        customerService.getById(customerId); // 존재 검증
+        return loadCart(customerId, storeId);
+    }
+
+    private List<CartItemResponse> loadCart(Long customerId, Long storeId) {
         return cartItemRepository.findByCustomerIdOrderBySavedAtDesc(customerId).stream()
                 .map(item -> toResponse(item, storeId))
                 .toList();
@@ -84,5 +111,19 @@ public class CartService {
                 .actionButtonLabel(actionButtonLabel)
                 .savedAt(item.getSavedAt())
                 .build();
+    }
+
+    private NotFoundException buildSkuNotFoundException(Long productId, String color, String size) {
+        if (!productRepository.existsById(productId)) {
+            return new NotFoundException("제품을 찾을 수 없습니다. productId=" + productId);
+        }
+        List<Sku> availableSkus = skuRepository.findByProductId(productId);
+        String options = availableSkus.stream()
+                .map(s -> s.getColor() + "/" + s.getSize())
+                .distinct()
+                .sorted()
+                .collect(Collectors.joining(", "));
+        return new NotFoundException(
+                "선택한 컬러/사이즈 조합(" + color + "/" + size + ")은 존재하지 않습니다. 선택 가능한 옵션: " + options);
     }
 }

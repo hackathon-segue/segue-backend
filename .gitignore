@@ -46,3 +46,6 @@ build/
 
 ### macOS ###
 .DS_Store
+
+# 액세스 로그 출력 디렉터리
+logs/
